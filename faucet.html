@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Gift Wallet - Regtest Faucet</title>
+    <style>
+        :root {
+            --btc-orange: #f7931a;
+            --btc-dark: #1a1a2e;
+            --btc-blue: #16213e;
+            --btc-accent: #0f3460;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(247, 147, 26, 0.2);
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b0;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header h1 .btc-icon { color: var(--btc-orange); font-size: 2.2rem; }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-links a {
+            color: var(--btc-orange);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin: 0 0.75rem;
+        }
+
+        .nav-links a:hover { text-decoration: underline; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1.2rem;
+            color: var(--btc-orange);
+        }
+
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--btc-orange);
+            box-shadow: 0 0 0 2px rgba(247, 147, 26, 0.15);
+        }
+
+        .fund-btn {
+            display: block;
+            width: 100%;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, var(--btc-orange), #e8850f);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .fund-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(247, 147, 26, 0.3);
+        }
+
+        .fund-btn:active { transform: translateY(0); }
+
+        .fund-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .fund-btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .fund-btn.loading .btn-text { display: none; }
+        .fund-btn.loading .spinner { display: inline-block; }
+
+        .warning-banner {
+            background: rgba(247, 147, 26, 0.1);
+            border: 1px solid rgba(247, 147, 26, 0.3);
+            border-radius: 10px;
+            padding: 0.8rem 1.2rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 0.9rem;
+            color: var(--btc-orange);
+        }
+
+        .result-card {
+            display: none;
+        }
+
+        .result-card.visible { display: block; }
+
+        .result-content {
+            padding: 1rem;
+            background: rgba(46, 204, 113, 0.08);
+            border: 1px solid rgba(46, 204, 113, 0.25);
+            border-radius: 10px;
+        }
+
+        .result-content .label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--success);
+            margin-bottom: 0.3rem;
+        }
+
+        .result-content .value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            color: var(--text-primary);
+            user-select: all;
+        }
+
+        .result-row {
+            margin-bottom: 0.8rem;
+        }
+
+        .result-row:last-child { margin-bottom: 0; }
+
+        .error-msg {
+            display: none;
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            border-radius: 8px;
+            padding: 0.8rem 1rem;
+            margin-top: 1rem;
+            color: #e8a0a0;
+            font-size: 0.9rem;
+        }
+
+        .error-msg.visible { display: block; }
+
+        .history {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .history-item {
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.85rem;
+        }
+
+        .history-item:last-child { border-bottom: none; }
+
+        .history-item .addr {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .history-item .amount {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .empty-history {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="btc-icon">&#x20BF;</span> Regtest Faucet</h1>
+            <p>Fund addresses with test Bitcoin on your local regtest network</p>
+        </header>
+
+        <div class="nav-links">
+            <a href="/">Generator</a>
+            <a href="/sweep.html">Sweep Funds</a>
+            <a href="/recover.html">Backup Recovery</a>
+            <a href="/donate.html">Donate</a>
+        </div>
+
+        <div class="warning-banner" id="warningBanner">
+            Regtest mode &mdash; test coins only, no real value
+        </div>
+
+        <!-- No Server Message -->
+        <div class="card" id="noServerCard" style="display: none; text-align: center;">
+            <h2 style="color: var(--text-secondary);">Server Required</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+                The faucet requires a local Python server running in regtest mode.
+            </p>
+            <p style="color: var(--text-secondary); font-size: 0.85rem;">
+                Start the server with: <code style="background: rgba(255,255,255,0.1); padding: 2px 8px; border-radius: 4px;">python3 server.py 8080 --regtest</code>
+            </p>
+        </div>
+
+        <!-- Fund Card -->
+        <div class="card" id="fundCard">
+            <h2>Fund an Address</h2>
+
+            <div class="form-group">
+                <label for="addressInput">Bitcoin Address</label>
+                <input type="text" id="addressInput"
+                       placeholder="bcrt1q... or bcrt1p..."
+                       autocomplete="off" spellcheck="false">
+            </div>
+
+            <div class="form-group">
+                <label for="amountInput">Amount (BTC)</label>
+                <input type="number" id="amountInput"
+                       value="1.0" min="0.001" max="50" step="0.1">
+            </div>
+
+            <button class="fund-btn" id="fundBtn" onclick="fundAddress()">
+                <span class="btn-text">Fund Address</span>
+                <div class="spinner"></div>
+            </button>
+
+            <div class="error-msg" id="errorMsg"></div>
+        </div>
+
+        <!-- Result Card -->
+        <div class="card result-card" id="resultCard">
+            <h2>Funded Successfully</h2>
+            <div class="result-content">
+                <div class="result-row">
+                    <div class="label">Transaction ID</div>
+                    <div class="value" id="resultTxid"></div>
+                </div>
+                <div class="result-row">
+                    <div class="label">Address</div>
+                    <div class="value" id="resultAddress"></div>
+                </div>
+                <div class="result-row">
+                    <div class="label">Amount</div>
+                    <div class="value" id="resultAmount"></div>
+                </div>
+                <div class="result-row">
+                    <div class="label">Status</div>
+                    <div class="value" id="resultStatus" style="color: var(--success);">Confirmed (1 block mined)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Card -->
+        <div class="card">
+            <h2>Funding History</h2>
+            <div class="history" id="historyList">
+                <div class="empty-history">No transactions yet</div>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 24px 16px 12px; margin-top: 32px; border-top: 1px solid #e0e0e0; color: #999; font-size: 12px; line-height: 1.6;">
+        &#9888;&#65039; <strong>No Warranty &middot; Use at Your Own Risk</strong><br>
+        This Bitcoin Gift Paper Wallet is provided as-is, without warranty of any kind. The author is not responsible for any loss of funds sent to addresses generated by this website. Always verify addresses and back up private keys before sending real Bitcoin.
+    </div>
+
+    <script>
+        // Detect server mode — faucet only works with local server
+        (async function init() {
+            let serverMode = false;
+            try {
+                const resp = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+                const data = await resp.json();
+                serverMode = data.status === 'ok';
+            } catch { serverMode = false; }
+
+            if (!serverMode) {
+                document.getElementById('noServerCard').style.display = 'block';
+                document.getElementById('fundCard').style.display = 'none';
+                document.getElementById('warningBanner').style.display = 'none';
+                // Hide history card too
+                const cards = document.querySelectorAll('.card');
+                cards.forEach(c => {
+                    if (c.id !== 'noServerCard' && c.id !== 'fundCard' && c.id !== 'resultCard') {
+                        c.style.display = 'none';
+                    }
+                });
+            }
+        })();
+
+        const history = [];
+
+        async function fundAddress() {
+            const btn = document.getElementById('fundBtn');
+            const errorMsg = document.getElementById('errorMsg');
+            const resultCard = document.getElementById('resultCard');
+
+            const address = document.getElementById('addressInput').value.trim();
+            const amount = document.getElementById('amountInput').value;
+
+            // Validate
+            if (!address) {
+                showError('Please enter a Bitcoin address');
+                return;
+            }
+
+            // Hide previous results/errors
+            errorMsg.classList.remove('visible');
+            resultCard.classList.remove('visible');
+
+            // Loading state
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch('/api/faucet', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address, amount }),
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                // Show result
+                document.getElementById('resultTxid').textContent = data.txid;
+                document.getElementById('resultAddress').textContent = data.address;
+                document.getElementById('resultAmount').textContent =
+                    `${data.amount_btc} BTC (${data.amount_sat.toLocaleString()} sats)`;
+                resultCard.classList.add('visible');
+
+                // Add to history
+                history.unshift({
+                    txid: data.txid,
+                    address: data.address,
+                    amount: data.amount_btc,
+                });
+                renderHistory();
+
+                // Clear address input for next use
+                document.getElementById('addressInput').value = '';
+
+            } catch (err) {
+                showError('Request failed: ' + err.message);
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('visible');
+        }
+
+        function renderHistory() {
+            const list = document.getElementById('historyList');
+            if (history.length === 0) {
+                list.innerHTML = '<div class="empty-history">No transactions yet</div>';
+                return;
+            }
+            list.innerHTML = history.map(h => `
+                <div class="history-item">
+                    <span class="amount">${h.amount} BTC</span>
+                    &rarr;
+                    <span class="addr">${h.address.substring(0, 20)}...${h.address.slice(-8)}</span>
+                    <br>
+                    <span class="addr" style="font-size: 0.75rem;">txid: ${h.txid.substring(0, 16)}...</span>
+                </div>
+            `).join('');
+        }
+
+        // Allow Enter key to submit
+        document.getElementById('addressInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') fundAddress();
+        });
+    </script>
+</body>
+</html>

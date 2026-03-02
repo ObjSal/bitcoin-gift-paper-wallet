@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Gift Wallet - Backup Recovery</title>
+    <style>
+        :root {
+            --btc-orange: #f7931a;
+            --btc-dark: #1a1a2e;
+            --btc-blue: #16213e;
+            --btc-accent: #0f3460;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(247, 147, 26, 0.2);
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b0;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header h1 .btc-icon { color: var(--btc-orange); font-size: 2.2rem; }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-links a {
+            color: var(--btc-orange);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin: 0 0.75rem;
+        }
+
+        .nav-links a:hover { text-decoration: underline; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1.2rem;
+            color: var(--btc-orange);
+        }
+
+        .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.4rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--btc-orange);
+            box-shadow: 0 0 0 2px rgba(247, 147, 26, 0.15);
+        }
+
+        .form-group select {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .form-group .hint {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+            line-height: 1.4;
+        }
+
+        .fee-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .fee-row input {
+            width: 120px !important;
+            flex-shrink: 0;
+        }
+
+        .fee-estimate {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+            white-space: nowrap;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 180px;
+        }
+
+        .btn:hover { transform: translateY(-1px); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--btc-orange), #e8850f);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 20px rgba(247, 147, 26, 0.3); }
+
+        .btn-warning { background: var(--warning); }
+        .btn-warning:hover { background: #e67e22; }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: var(--text-primary);
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.15); }
+
+        .action-bar {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        .info-box {
+            padding: 1rem 1.2rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .info-box.address {
+            background: rgba(247, 147, 26, 0.08);
+            border: 1px solid rgba(247, 147, 26, 0.25);
+        }
+
+        .info-box.balance {
+            background: rgba(46, 204, 113, 0.08);
+            border: 1px solid rgba(46, 204, 113, 0.25);
+        }
+
+        .info-box.success {
+            background: rgba(46, 204, 113, 0.08);
+            border: 1px solid rgba(46, 204, 113, 0.25);
+        }
+
+        .info-box.error {
+            background: rgba(231, 76, 60, 0.08);
+            border: 1px solid rgba(231, 76, 60, 0.25);
+            color: #e8a0a0;
+        }
+
+        .info-box.warning {
+            background: rgba(243, 156, 18, 0.08);
+            border: 1px solid rgba(243, 156, 18, 0.25);
+            color: #f0d0a0;
+        }
+
+        .info-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--btc-orange);
+            margin-bottom: 0.3rem;
+        }
+
+        .info-value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            user-select: all;
+        }
+
+        .info-value a {
+            color: var(--btc-orange);
+            text-decoration: none;
+        }
+        .info-value a:hover { text-decoration: underline; }
+
+        .hidden { display: none; }
+
+        .spinner {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .step {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: 700;
+            background: rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+
+        .step.active {
+            background: rgba(247, 147, 26, 0.2);
+            border-color: var(--btc-orange);
+            color: var(--btc-orange);
+        }
+
+        .step.done {
+            background: rgba(46, 204, 113, 0.2);
+            border-color: var(--success);
+            color: var(--success);
+        }
+
+        .step-line {
+            width: 40px;
+            height: 2px;
+            background: rgba(255,255,255,0.1);
+            align-self: center;
+        }
+
+        .security-notice {
+            margin-top: 2rem;
+            padding: 1rem 1.5rem;
+            background: rgba(231, 76, 60, 0.08);
+            border: 1px solid rgba(231, 76, 60, 0.25);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: #e8a0a0;
+            line-height: 1.5;
+        }
+
+        .security-notice strong { color: var(--danger); }
+
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.5rem; }
+            .fee-row { flex-direction: column; align-items: flex-start; }
+            .fee-row input { width: 100% !important; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="btc-icon">&#x20BF;</span> Backup Recovery</h1>
+            <p>Recover funds using the backup key (script path spend)</p>
+        </header>
+
+        <div class="nav-links">
+            <a href="/">Generator</a>
+            <a href="/sweep.html">Sweep Funds</a>
+            <a href="/faucet.html">Regtest Faucet</a>
+            <a href="/donate.html">Donate</a>
+        </div>
+
+        <!-- Step indicator -->
+        <div class="step-indicator">
+            <div class="step active" id="step1">1</div>
+            <div class="step-line"></div>
+            <div class="step" id="step2">2</div>
+            <div class="step-line"></div>
+            <div class="step" id="step3">3</div>
+        </div>
+
+        <div class="info-box warning" style="margin-bottom: 1.5rem;">
+            <strong>For the gift giver only.</strong> This page uses the backup private key
+            and internal public key (both shown in the generator, NOT printed on the bill)
+            to recover funds via script-path spending. Only use this if the recipient has
+            lost their bill or you need to reclaim the funds.
+        </div>
+
+        <!-- Step 1: Enter backup key + internal pubkey -->
+        <div class="card" id="cardStep1">
+            <h2>Step 1: Enter Backup Key Details</h2>
+
+            <div style="margin-bottom: 1.25rem;">
+                <input type="file" id="importFileInput" accept=".json" style="display: none;"
+                       onchange="importBackupRecovery(event)">
+                <button class="btn btn-secondary" onclick="document.getElementById('importFileInput').click()">
+                    Import Backup Recovery
+                </button>
+                <span id="importStatus" style="margin-left: 0.75rem; font-size: 0.85rem; color: var(--success);"></span>
+            </div>
+
+            <div class="form-group">
+                <label>Backup Private Key (WIF)</label>
+                <input type="text" id="backupWifInput"
+                       placeholder="The backup WIF shown in the generator (not on the bill)"
+                       autocomplete="off" spellcheck="false">
+                <div class="hint">
+                    This is the "Backup Private Key (WIF)" shown when you generated the wallet.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Internal Public Key (Hex)</label>
+                <input type="text" id="internalPubkeyInput"
+                       placeholder="64-character hex string (32 bytes)"
+                       autocomplete="off" spellcheck="false">
+                <div class="hint">
+                    This is the "Internal Public Key" shown in the generator wallet details.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Network</label>
+                <select id="networkSelect">
+                    <option value="mainnet">Mainnet</option>
+                    <option value="testnet4">Testnet4</option>
+                    <option value="regtest">Regtest (Local Testing)</option>
+                </select>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-primary" id="btnDerive" onclick="deriveAddress()">
+                    Reconstruct Address
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Verify address & check balance -->
+        <div class="card hidden" id="cardStep2">
+            <h2>Step 2: Verify Address & Balance</h2>
+
+            <div class="info-box address">
+                <div class="info-label">Reconstructed Address</div>
+                <div class="info-value" id="derivedAddress"></div>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+                This should match the original Taproot address that was funded.
+            </p>
+
+            <div class="hidden" id="balanceInfo">
+                <div class="info-box balance">
+                    <div class="info-label">Balance</div>
+                    <div class="info-value" id="balanceDisplay"></div>
+                </div>
+            </div>
+
+            <div id="errorBox" class="info-box error hidden"></div>
+
+            <div class="action-bar">
+                <button class="btn btn-primary" id="btnCheckBalance" onclick="checkBalance()">
+                    Check Balance
+                </button>
+                <button class="btn btn-secondary" onclick="reset()">
+                    Start Over
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: Recover to destination -->
+        <div class="card hidden" id="cardStep3">
+            <h2>Step 3: Recover to Destination</h2>
+
+            <div class="form-group">
+                <label>Destination Address</label>
+                <input type="text" id="destAddress"
+                       placeholder="Enter the address to recover funds to"
+                       autocomplete="off" spellcheck="false">
+            </div>
+
+            <div class="form-group">
+                <label>Fee Rate (sat/vB)</label>
+                <div class="fee-row">
+                    <input type="number" id="feeRate" value="10" min="1" max="1000"
+                           oninput="updateFeeEstimate()">
+                    <span class="fee-estimate" id="feeEstimate">= calculating...</span>
+                </div>
+                <div class="hint" style="margin-top: 0.3rem;">
+                    Script-path spends are larger than key-path (~107 vB/input vs ~58 vB/input).
+                </div>
+            </div>
+
+            <div class="info-box balance" style="margin-top: 1rem;">
+                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <div class="info-label">You will receive</div>
+                        <div class="info-value" id="receiveAmount">--</div>
+                    </div>
+                    <div>
+                        <div class="info-label">Fee</div>
+                        <div class="info-value" id="feeAmount">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-bar">
+                <button class="btn btn-warning" id="btnRecover" onclick="recover()">
+                    Recover Funds
+                </button>
+                <button class="btn btn-secondary" onclick="reset()">
+                    Start Over
+                </button>
+            </div>
+        </div>
+
+        <!-- Result -->
+        <div class="card hidden" id="cardResult">
+            <h2 id="resultHeading">Transaction Broadcast</h2>
+            <div class="info-box success" id="resultBox"></div>
+            <div class="action-bar">
+                <button class="btn btn-secondary" onclick="reset()">
+                    Recover Another
+                </button>
+            </div>
+        </div>
+
+        <div class="security-notice" id="securityNotice">
+            <strong>Security Notice:</strong> All transaction signing happens entirely in your browser.
+            Your backup private key never leaves this page. For maximum security, run this
+            on an offline/air-gapped computer.
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 24px 16px 12px; margin-top: 32px; border-top: 1px solid #e0e0e0; color: #999; font-size: 12px; line-height: 1.6;">
+        &#9888;&#65039; <strong>No Warranty &middot; Use at Your Own Risk</strong><br>
+        This Bitcoin Gift Paper Wallet is provided as-is, without warranty of any kind. The author is not responsible for any loss of funds sent to addresses generated by this website. Always verify addresses and back up private keys before sending real Bitcoin.
+    </div>
+
+    <script src="bitcoin_crypto.js"></script>
+    <script>
+        let serverMode = false;
+
+        // Detect server mode
+        (async function init() {
+            try {
+                const resp = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+                const data = await resp.json();
+                serverMode = data.status === 'ok';
+            } catch { serverMode = false; }
+
+            if (!serverMode) {
+                const regtestOpt = document.querySelector('#networkSelect option[value="regtest"]');
+                if (regtestOpt) regtestOpt.remove();
+                document.querySelectorAll('.nav-links a').forEach(a => {
+                    if (a.href.includes('faucet')) a.style.display = 'none';
+                });
+            } else {
+                document.getElementById('securityNotice').innerHTML =
+                    '<strong>Security Notice:</strong> All signing happens in your browser. ' +
+                    'In regtest mode, signed transactions are broadcast via the local server.';
+            }
+        })();
+
+        // Dual-mode UTXO fetch
+        async function fetchUtxos(address, network) {
+            if (network === 'regtest' && serverMode) {
+                const resp = await fetch('/api/utxos', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address, network }),
+                });
+                return resp.json();
+            } else {
+                const prefix = network === 'testnet4' ? 'testnet4/' : '';
+                const url = `https://mempool.space/${prefix}api/address/${address}/utxo`;
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error(`Mempool API error: ${resp.status}`);
+                const utxoList = await resp.json();
+                const total_sat = utxoList.reduce((sum, u) => sum + u.value, 0);
+                return {
+                    utxos: utxoList.map(u => ({
+                        txid: u.txid, vout: u.vout, value_sat: u.value,
+                    })),
+                    total_sat,
+                    count: utxoList.length,
+                };
+            }
+        }
+
+        // Dual-mode broadcast
+        async function broadcastTx(rawHex, network) {
+            if (network === 'regtest' && serverMode) {
+                const resp = await fetch('/api/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ raw_hex: rawHex, network }),
+                });
+                return resp.json();
+            } else {
+                const prefix = network === 'testnet4' ? 'testnet4/' : '';
+                const url = `https://mempool.space/${prefix}api/tx`;
+                const resp = await fetch(url, { method: 'POST', body: rawHex });
+                if (!resp.ok) {
+                    const errText = await resp.text();
+                    throw new Error(`Broadcast failed: ${errText}`);
+                }
+                const txid = await resp.text();
+                return { txid };
+            }
+        }
+
+        function importBackupRecovery(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+
+                    if (data.backup_private_key_wif) {
+                        document.getElementById('backupWifInput').value = data.backup_private_key_wif;
+                    }
+                    if (data.internal_pubkey_hex) {
+                        document.getElementById('internalPubkeyInput').value = data.internal_pubkey_hex;
+                    }
+                    if (data.network) {
+                        document.getElementById('networkSelect').value = data.network;
+                    }
+
+                    document.getElementById('importStatus').textContent = '\u2713 Imported';
+                    setTimeout(() => {
+                        document.getElementById('importStatus').textContent = '';
+                    }, 3000);
+                } catch (err) {
+                    alert('Invalid backup recovery file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+
+            // Reset file input so the same file can be re-imported
+            event.target.value = '';
+        }
+
+        // State
+        let state = {
+            backupWif: null,
+            internalPubkeyHex: null,
+            network: null,
+            address: null,
+            backupPrivkeyBytes: null,
+            backupPubkeyX: null,
+            internalPubkeyX: null,
+            outputParity: null,
+            inputScriptpubkey: null,
+            utxos: [],
+            totalSat: 0,
+            nInputs: 0,
+        };
+
+        function setStep(n) {
+            for (let i = 1; i <= 3; i++) {
+                const el = document.getElementById('step' + i);
+                el.classList.remove('active', 'done');
+                if (i < n) el.classList.add('done');
+                else if (i === n) el.classList.add('active');
+            }
+        }
+
+        function showCard(id) {
+            ['cardStep1', 'cardStep2', 'cardStep3', 'cardResult'].forEach(c => {
+                document.getElementById(c).classList.add('hidden');
+            });
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function showError(msg) {
+            const box = document.getElementById('errorBox');
+            box.textContent = msg;
+            box.classList.remove('hidden');
+        }
+
+        function hideError() {
+            document.getElementById('errorBox').classList.add('hidden');
+        }
+
+        function reset() {
+            state = { backupWif: null, internalPubkeyHex: null, network: null,
+                      address: null, backupPrivkeyBytes: null, backupPubkeyX: null,
+                      internalPubkeyX: null, outputParity: null, inputScriptpubkey: null,
+                      utxos: [], totalSat: 0, nInputs: 0 };
+            document.getElementById('backupWifInput').value = '';
+            document.getElementById('internalPubkeyInput').value = '';
+            document.getElementById('destAddress').value = '';
+            document.getElementById('feeRate').value = '10';
+            setStep(1);
+            showCard('cardStep1');
+            hideError();
+        }
+
+        async function deriveAddress() {
+            const backupWif = document.getElementById('backupWifInput').value.trim();
+            const internalPubkey = document.getElementById('internalPubkeyInput').value.trim();
+            const network = document.getElementById('networkSelect').value;
+
+            if (!backupWif) { alert('Please enter the backup private key (WIF).'); return; }
+            if (!internalPubkey) { alert('Please enter the internal public key (hex).'); return; }
+            if (internalPubkey.length !== 64) {
+                alert('Internal public key must be 64 hex characters (32 bytes).');
+                return;
+            }
+
+            const btn = document.getElementById('btnDerive');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div>';
+
+            try {
+                // Client-side address reconstruction
+                const decoded = BitcoinCrypto.wifToPrivateKey(backupWif);
+                const backupPrivkey = decoded.privateKey;
+                const { xOnly: backupPubX } = BitcoinCrypto.privateKeyToXonlyPubkey(backupPrivkey);
+                const internalPubX = BitcoinCrypto.hexToBytes(internalPubkey);
+
+                // Compute script tree hash from backup pubkey
+                const scriptTreeHash = BitcoinCrypto.computeScriptTreeHashForBackup(backupPubX);
+
+                // Tweak the internal key with the script tree
+                const { outputKeyX, parity } = BitcoinCrypto.taprootTweakPubkey(internalPubX, scriptTreeHash);
+
+                // Derive address from output key
+                const hrp = BitcoinCrypto._networkHrp(network);
+                const address = BitcoinCrypto.bech32Encode(hrp, 1, Array.from(outputKeyX), 'bech32m');
+
+                state.backupWif = backupWif;
+                state.internalPubkeyHex = internalPubkey;
+                state.network = network;
+                state.address = address;
+                state.backupPrivkeyBytes = backupPrivkey;
+                state.backupPubkeyX = backupPubX;
+                state.internalPubkeyX = internalPubX;
+                state.outputParity = parity;
+                state.inputScriptpubkey = BitcoinCrypto._addressToScriptpubkey(address);
+
+                document.getElementById('derivedAddress').textContent = address;
+                document.getElementById('balanceInfo').classList.add('hidden');
+                hideError();
+
+                setStep(2);
+                showCard('cardStep2');
+
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Reconstruct Address';
+            }
+        }
+
+        async function checkBalance() {
+            const btn = document.getElementById('btnCheckBalance');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div>';
+            hideError();
+
+            try {
+                const data = await fetchUtxos(state.address, state.network);
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                state.utxos = data.utxos;
+                state.totalSat = data.total_sat;
+                state.nInputs = data.count;
+
+                if (data.count === 0) {
+                    showError('No UTXOs found at this address. The balance is 0.');
+                    document.getElementById('balanceInfo').classList.add('hidden');
+                    return;
+                }
+
+                const btc = (data.total_sat / 1e8).toFixed(8);
+                document.getElementById('balanceDisplay').textContent =
+                    `${data.total_sat.toLocaleString()} sats (${btc} BTC) \u2014 ${data.count} UTXO(s)`;
+                document.getElementById('balanceInfo').classList.remove('hidden');
+
+                setStep(3);
+                showCard('cardStep3');
+                updateFeeEstimate();
+
+            } catch (err) {
+                showError('Request failed: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Check Balance';
+            }
+        }
+
+        function estimateVsize() {
+            const n = state.nInputs;
+            // Script-path: larger witness (script + control block)
+            return 11 + n * 107 + 43;
+        }
+
+        function updateFeeEstimate() {
+            const feeRate = parseInt(document.getElementById('feeRate').value) || 1;
+            const vsize = estimateVsize();
+            const feeSat = vsize * feeRate;
+            const receiveSat = state.totalSat - feeSat;
+
+            document.getElementById('feeEstimate').textContent =
+                `= ${feeSat.toLocaleString()} sats (${vsize} vB)`;
+
+            if (receiveSat > 0) {
+                const btc = (receiveSat / 1e8).toFixed(8);
+                document.getElementById('receiveAmount').textContent =
+                    `${receiveSat.toLocaleString()} sats (${btc} BTC)`;
+                document.getElementById('feeAmount').textContent =
+                    `${feeSat.toLocaleString()} sats`;
+                document.getElementById('btnRecover').disabled = false;
+            } else {
+                document.getElementById('receiveAmount').textContent =
+                    'Insufficient funds for this fee rate';
+                document.getElementById('feeAmount').textContent =
+                    `${feeSat.toLocaleString()} sats`;
+                document.getElementById('btnRecover').disabled = true;
+            }
+        }
+
+        async function recover() {
+            const destAddr = document.getElementById('destAddress').value.trim();
+            const feeRate = parseInt(document.getElementById('feeRate').value) || 10;
+
+            if (!destAddr) { alert('Please enter a destination address.'); return; }
+
+            // Validate destination address matches selected network
+            try {
+                const { hrp } = BitcoinCrypto.bech32Decode(destAddr);
+                const expectedHrp = BitcoinCrypto._networkHrp(state.network);
+                if (hrp !== expectedHrp) {
+                    const networkNames = { bc: 'mainnet', tb: 'testnet4', bcrt: 'regtest' };
+                    alert(`Address prefix "${hrp}" does not match the selected network (${state.network}). ` +
+                          `Expected a "${expectedHrp}1..." address.`);
+                    return;
+                }
+            } catch (e) {
+                alert('Invalid destination address: ' + e.message);
+                return;
+            }
+
+            const btn = document.getElementById('btnRecover');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div>';
+
+            try {
+                const vsize = estimateVsize();
+                const feeSat = vsize * feeRate;
+                const amountSat = state.totalSat - feeSat;
+
+                if (amountSat <= 0) {
+                    alert('Insufficient funds for this fee rate.');
+                    return;
+                }
+
+                // Client-side script-path transaction construction and signing
+                const rawHex = BitcoinCrypto.buildSignedTaprootScriptpathSweepTx(
+                    state.backupPrivkeyBytes,
+                    state.backupPubkeyX,
+                    state.internalPubkeyX,
+                    state.outputParity,
+                    state.utxos,
+                    state.inputScriptpubkey,
+                    destAddr,
+                    amountSat
+                );
+
+                // Broadcast
+                const result = await broadcastTx(rawHex, state.network);
+
+                if (result.error) {
+                    alert('Error: ' + result.error);
+                    return;
+                }
+
+                const txid = result.txid;
+
+                // Show result
+                let html = '';
+                html += `<div class="info-label">Transaction ID</div>`;
+                if (state.network !== 'regtest') {
+                    const prefix = state.network === 'testnet4' ? 'testnet4/' : '';
+                    const explorerUrl = `https://mempool.space/${prefix}tx/${txid}`;
+                    html += `<div class="info-value"><a href="${explorerUrl}" target="_blank">${txid}</a></div>`;
+                } else {
+                    html += `<div class="info-value">${txid}</div>`;
+                }
+                html += `<br>`;
+                html += `<div class="info-label">Amount Recovered</div>`;
+                html += `<div class="info-value">${amountSat.toLocaleString()} sats (${(amountSat / 1e8).toFixed(8)} BTC)</div>`;
+                html += `<br>`;
+                html += `<div class="info-label">Fee</div>`;
+                html += `<div class="info-value">${feeSat.toLocaleString()} sats (${vsize} vB)</div>`;
+                html += `<br>`;
+                html += `<div class="info-label">Destination</div>`;
+                html += `<div class="info-value">${destAddr}</div>`;
+
+                if (state.network === 'regtest') {
+                    html += `<br>`;
+                    html += `<div class="info-label">Status</div>`;
+                    html += `<div class="info-value" style="color: var(--success);">Confirmed (1 block mined)</div>`;
+                    document.getElementById('resultHeading').textContent = 'Transaction Confirmed';
+                } else {
+                    document.getElementById('resultHeading').textContent = 'Transaction Broadcast';
+                }
+
+                document.getElementById('resultBox').innerHTML = html;
+                showCard('cardResult');
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    alert('Request timed out. Please try again.');
+                } else {
+                    alert('Recovery failed: ' + err.message);
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Recover Funds';
+            }
+        }
+    </script>
+</body>
+</html>

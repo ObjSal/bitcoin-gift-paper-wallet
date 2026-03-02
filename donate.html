@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Donate - Support Bitcoin Gift Paper Wallet</title>
+    <style>
+        :root {
+            --btc-orange: #f7931a;
+            --btc-dark: #1a1a2e;
+            --btc-blue: #16213e;
+            --btc-accent: #0f3460;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(247, 147, 26, 0.2);
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b0;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header h1 .btc-icon { color: var(--btc-orange); font-size: 2.2rem; }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-links a {
+            color: var(--btc-orange);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin: 0 0.75rem;
+        }
+
+        .nav-links a:hover { text-decoration: underline; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1.2rem;
+            color: var(--btc-orange);
+        }
+
+        .donate-message {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .donate-message .coffee-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .donate-message h2 {
+            font-size: 1.5rem;
+            color: var(--btc-orange);
+            margin-bottom: 1rem;
+        }
+
+        .donate-message p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            line-height: 1.7;
+            margin-bottom: 0.8rem;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .donate-message .emphasis {
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+
+        .donate-message .highlight {
+            color: var(--btc-orange);
+            font-weight: 700;
+        }
+
+        .qr-section {
+            text-align: center;
+            padding: 2rem 0;
+        }
+
+        .qr-section img {
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            image-rendering: pixelated;
+        }
+
+        .address-display {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            max-width: 500px;
+            margin: 0 auto 0.8rem;
+            user-select: all;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .address-display:hover {
+            border-color: var(--btc-orange);
+        }
+
+        .address-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--btc-orange);
+            margin-bottom: 0.5rem;
+        }
+
+        .copy-hint {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+        }
+
+        .generated-with {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .generated-with .highlight {
+            color: var(--btc-orange);
+            font-style: normal;
+            font-weight: 600;
+        }
+
+        @media (max-width: 600px) {
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.5rem; }
+            .donate-message h2 { font-size: 1.3rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="btc-icon">&#x20BF;</span> Support This Project</h1>
+            <p>Help keep Bitcoin tools free, open-source, and independent</p>
+        </header>
+
+        <div class="nav-links">
+            <a href="/">Generator</a>
+            <a href="/sweep.html">Sweep Funds</a>
+            <a href="/recover.html">Backup Recovery</a>
+            <a href="/faucet.html">Regtest Faucet</a>
+        </div>
+
+        <div class="card">
+            <div class="donate-message">
+                <div class="coffee-icon">&#9749;</div>
+                <h2>Buy Me a Coffee (with Bitcoin!)</h2>
+                <p class="emphasis">
+                    Every sat counts. Your donation helps keep this project alive.
+                </p>
+                <p>
+                    Building and maintaining zero-dependency, open-source Bitcoin tools takes
+                    <span class="highlight">serious time, caffeine, and compute</span>.
+                    From hand-rolling secp256k1 in pure JavaScript to testing every transaction
+                    on-chain &mdash; this project is a labor of love.
+                </p>
+                <p>
+                    Your donation helps cover the cost of
+                    <span class="highlight">Claude</span> (the AI that helped build this),
+                    keeps the coffee flowing, and fuels development of more
+                    great Bitcoin tools. No VC funding, no ads, no tracking &mdash; just
+                    open-source code and generous supporters like you.
+                </p>
+            </div>
+
+            <div class="qr-section">
+                <div class="address-label">Scan to Donate</div>
+                <div id="qrCode"></div>
+                <div class="address-label" style="margin-top: 1rem;">Bitcoin Address (SegWit)</div>
+                <div class="address-display" id="addressDisplay" onclick="copyAddress()">
+                    bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8
+                </div>
+                <div class="copy-hint" id="copyHint">Click to copy</div>
+            </div>
+
+            <div class="generated-with">
+                This address was generated using <span class="highlight">&#x20BF;itcoin Gift Paper Wallet</span>
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 24px 16px 12px; margin-top: 32px; border-top: 1px solid #e0e0e0; color: #999; font-size: 12px; line-height: 1.6;">
+        &#9888;&#65039; <strong>No Warranty &middot; Use at Your Own Risk</strong><br>
+        This Bitcoin Gift Paper Wallet is provided as-is, without warranty of any kind. The author is not responsible for any loss of funds sent to addresses generated by this website. Always verify addresses and back up private keys before sending real Bitcoin.
+    </div>
+
+    <script src="qr_generator.js"></script>
+    <script>
+        const ADDRESS = 'bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8';
+
+        // Generate QR code on load
+        (function() {
+            const dataUrl = QRGenerator.generateQRDataURL(ADDRESS, 250);
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.alt = 'Bitcoin donation QR code';
+            img.width = 250;
+            img.height = 250;
+            document.getElementById('qrCode').appendChild(img);
+        })();
+
+        // Hide faucet link if no server
+        (async function() {
+            try {
+                const resp = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+                const data = await resp.json();
+                if (data.status !== 'ok') throw new Error();
+            } catch {
+                document.querySelectorAll('.nav-links a').forEach(a => {
+                    if (a.href.includes('faucet')) a.style.display = 'none';
+                });
+            }
+        })();
+
+        function copyAddress() {
+            navigator.clipboard.writeText(ADDRESS).then(() => {
+                const hint = document.getElementById('copyHint');
+                hint.textContent = 'Copied!';
+                hint.style.color = 'var(--success)';
+                setTimeout(() => {
+                    hint.textContent = 'Click to copy';
+                    hint.style.color = '';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

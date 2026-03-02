@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>₿itcoin Gift Paper Wallet</title>
+    <style>
+        :root {
+            --btc-orange: #f7931a;
+            --btc-dark: #1a1a2e;
+            --btc-blue: #16213e;
+            --btc-accent: #0f3460;
+            --bg-gradient: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: rgba(247, 147, 26, 0.2);
+            --text-primary: #e8e8e8;
+            --text-secondary: #a0a0b0;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        header h1 .btc-icon {
+            color: var(--btc-orange);
+            font-size: 2.2rem;
+        }
+
+        header p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .nav-links {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-links a {
+            color: var(--btc-orange);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin: 0 0.75rem;
+        }
+
+        .nav-links a:hover { text-decoration: underline; }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.2rem;
+            margin-bottom: 1.2rem;
+            color: var(--btc-orange);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .options-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .option-card {
+            background: rgba(255,255,255,0.03);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .option-card:hover {
+            border-color: var(--btc-orange);
+            background: rgba(247, 147, 26, 0.05);
+        }
+
+        .option-card.selected {
+            border-color: var(--btc-orange);
+            background: rgba(247, 147, 26, 0.1);
+            box-shadow: 0 0 20px rgba(247, 147, 26, 0.1);
+        }
+
+        .option-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.4rem;
+        }
+
+        .option-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .option-card .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 0.5rem;
+        }
+
+        .badge-segwit { background: #3498db; color: white; }
+        .badge-taproot { background: var(--btc-orange); color: white; }
+
+        .backup-option {
+            display: none;
+            margin-top: 1rem;
+            padding: 1rem 1.5rem;
+            background: rgba(46, 204, 113, 0.05);
+            border: 1px solid rgba(46, 204, 113, 0.2);
+            border-radius: 10px;
+        }
+
+        .backup-option.visible { display: flex; margin-bottom: 1rem; }
+
+        .backup-option label {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            font-size: 0.95rem;
+            width: 100%;
+        }
+
+        .backup-option input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--btc-orange);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .backup-option .info {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+            line-height: 1.4;
+        }
+
+        .network-select {
+            margin-top: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .network-select label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-right: 0.5rem;
+        }
+
+        .network-select select {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-primary);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .generate-btn {
+            display: block;
+            width: 100%;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            background: linear-gradient(135deg, var(--btc-orange), #e8850f);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            letter-spacing: 0.5px;
+        }
+
+        .generate-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(247, 147, 26, 0.3);
+        }
+
+        .generate-btn:active {
+            transform: translateY(0);
+        }
+
+        .generate-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .generate-btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .generate-btn.loading .btn-text { display: none; }
+        .generate-btn.loading .spinner { display: inline-block; }
+
+        /* Results section */
+        .results {
+            display: none;
+        }
+
+        .results.visible { display: block; }
+
+        .bill-preview {
+            text-align: center;
+            margin-bottom: 0.25rem;
+        }
+
+        .bill-preview img {
+            max-width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            border: 2px solid rgba(247, 147, 26, 0.3);
+        }
+
+        .wallet-details {
+            margin-bottom: 1.5rem;
+        }
+
+        .detail-row {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            margin-bottom: 1rem;
+            padding: 0.8rem 1rem;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+        }
+
+        .detail-row .label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--btc-orange);
+        }
+
+        .detail-row .value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+            color: var(--text-primary);
+            user-select: all;
+        }
+
+        .detail-row.warning {
+            border: 1px solid rgba(231, 76, 60, 0.3);
+            background: rgba(231, 76, 60, 0.05);
+        }
+
+        .detail-row.warning .label {
+            color: var(--danger);
+        }
+
+        .download-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: white;
+            background: var(--success);
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-right: 0.5rem;
+        }
+
+        .download-btn:hover {
+            background: #27ae60;
+            transform: translateY(-1px);
+        }
+
+        .new-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.8rem;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .new-btn:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        .bill-credit {
+            text-align: center;
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.4);
+            margin-top: 0.25rem;
+            margin-bottom: 1.25rem;
+        }
+        .bill-credit a {
+            color: rgba(247,147,26,0.6);
+            text-decoration: none;
+        }
+        .bill-credit a:hover {
+            color: var(--btc-orange);
+            text-decoration: underline;
+        }
+
+        .action-bar {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .security-notice {
+            margin-top: 2rem;
+            padding: 1rem 1.5rem;
+            background: rgba(231, 76, 60, 0.08);
+            border: 1px solid rgba(231, 76, 60, 0.25);
+            border-radius: 10px;
+            font-size: 0.85rem;
+            color: #e8a0a0;
+            line-height: 1.5;
+        }
+
+        .security-notice strong {
+            color: var(--danger);
+        }
+
+        @media (max-width: 600px) {
+            .options-grid { grid-template-columns: 1fr; }
+            .container { padding: 1rem; }
+            header h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="btc-icon">&#x20BF;</span>itcoin Gift Paper Wallet</h1>
+            <p>Generate secure paper wallets for gifting Bitcoin</p>
+        </header>
+
+        <div class="nav-links">
+            <a href="/sweep.html">Sweep Funds</a>
+            <a href="/recover.html">Backup Recovery</a>
+            <a href="/faucet.html">Regtest Faucet</a>
+            <a href="/donate.html">Donate</a>
+        </div>
+
+        <!-- Generator Card -->
+        <div class="card" id="generatorCard">
+            <h2>Address Type</h2>
+
+            <div class="options-grid">
+                <div class="option-card" id="optSegwit" onclick="selectType('segwit')">
+                    <span class="badge badge-segwit">SegWit</span>
+                    <h3>Native SegWit (P2WPKH)</h3>
+                    <p>Standard bc1q... address. Widely supported, lower fees than legacy.</p>
+                </div>
+                <div class="option-card selected" id="optTaproot" onclick="selectType('taproot')">
+                    <span class="badge badge-taproot">Taproot</span>
+                    <h3>Taproot (P2TR)</h3>
+                    <p>Modern bc1p... address. Enhanced privacy and smart contract capabilities.</p>
+                </div>
+            </div>
+
+            <div class="backup-option visible" id="backupOption">
+                <label>
+                    <input type="checkbox" id="backupCheckbox">
+                    <div>
+                        <strong>Enable Recovery Backup Key</strong> (Experimental)
+                        <div class="info">
+                            Creates a second private key that can also spend from this address.
+                            Keep this backup key safe — if the recipient loses their printed bill,
+                            you can recover the funds using this backup key.
+                        </div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="network-select">
+                <label for="networkSelect">Network:</label>
+                <select id="networkSelect">
+                    <option value="mainnet">Mainnet</option>
+                    <option value="testnet4">Testnet4</option>
+                    <option value="regtest">Regtest (Testing)</option>
+                </select>
+            </div>
+
+            <button class="generate-btn" id="generateBtn" onclick="generateWallet()">
+                <span class="btn-text">Generate New Wallet</span>
+                <div class="spinner"></div>
+            </button>
+        </div>
+
+        <!-- Results Card -->
+        <div class="results" id="results">
+            <div class="card">
+                <h2>Paper Wallet Preview</h2>
+                <div class="bill-preview">
+                    <img id="billImage" alt="Bitcoin Paper Wallet Bill" />
+                </div>
+
+                <div class="bill-credit">
+                    Paper wallet art by <a href="https://www.reddit.com/r/Bitcoin/comments/20rml2/heres_a_paper_wallet_enjoy_or_not_im_bored/" target="_blank">u/CoinCult</a>
+                </div>
+
+                <div class="action-bar">
+                    <button class="download-btn" onclick="downloadBill()">
+                        Download Bill
+                    </button>
+                    <button class="download-btn" id="downloadBackupBtn" onclick="downloadBackupRecovery()" style="background: var(--btc-orange); display: none;">
+                        Download Backup Recovery
+                    </button>
+                    <button class="new-btn" onclick="generateWallet()">
+                        Generate Another
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Wallet Details</h2>
+                <div class="wallet-details" id="walletDetails"></div>
+            </div>
+
+            <div class="security-notice">
+                <strong>Security Notice:</strong> This wallet was generated using cryptographically
+                secure random entropy. The private key shown above gives full control over any Bitcoin
+                sent to the address. <strong>Never share the private key</strong> — anyone with access
+                to it can spend the funds. Print the bill and store the private key securely.
+                For maximum security, generate wallets on an offline/air-gapped computer.
+            </div>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 24px 16px 12px; margin-top: 32px; border-top: 1px solid #e0e0e0; color: #999; font-size: 12px; line-height: 1.6;">
+        &#9888;&#65039; <strong>No Warranty &middot; Use at Your Own Risk</strong><br>
+        This Bitcoin Gift Paper Wallet is provided as-is, without warranty of any kind. The author is not responsible for any loss of funds sent to addresses generated by this website. Always verify addresses and back up private keys before sending real Bitcoin.
+    </div>
+
+    <script src="bitcoin_crypto.js"></script>
+    <script src="qr_generator.js"></script>
+    <script src="bill_generator.js"></script>
+    <script>
+        let currentType = 'taproot';
+        let currentWallet = null;
+        let billTemplateImg = null;
+        let serverMode = false;
+
+        // Detect server and pre-load bill template
+        (async function init() {
+            // Detect server mode
+            try {
+                const resp = await fetch('/api/health', { signal: AbortSignal.timeout(2000) });
+                const data = await resp.json();
+                serverMode = data.status === 'ok';
+            } catch { serverMode = false; }
+
+            // Hide regtest option if no server
+            if (!serverMode) {
+                const regtestOpt = document.querySelector('#networkSelect option[value="regtest"]');
+                if (regtestOpt) regtestOpt.remove();
+                // Hide faucet link
+                document.querySelectorAll('.nav-links a').forEach(a => {
+                    if (a.href.includes('faucet')) a.style.display = 'none';
+                });
+            }
+
+            // Pre-load bill template
+            try {
+                billTemplateImg = await BillGenerator.loadBillTemplate('bill_template.png');
+            } catch (e) {
+                console.warn('Bill template not loaded:', e.message);
+            }
+        })();
+
+        function selectType(type) {
+            currentType = type;
+            document.getElementById('optSegwit').classList.toggle('selected', type === 'segwit');
+            document.getElementById('optTaproot').classList.toggle('selected', type === 'taproot');
+            document.getElementById('backupOption').classList.toggle('visible', type === 'taproot');
+
+            if (type === 'segwit') {
+                document.getElementById('backupCheckbox').checked = false;
+            }
+        }
+
+        async function generateWallet() {
+            const btn = document.getElementById('generateBtn');
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            const backup = document.getElementById('backupCheckbox').checked;
+            const network = document.getElementById('networkSelect').value;
+
+            try {
+                // Generate wallet client-side using JS crypto
+                let wallet;
+                if (currentType === 'segwit') {
+                    const sw = BitcoinCrypto.generateSegwitAddress(network);
+                    wallet = {
+                        type: 'segwit_p2wpkh',
+                        address: sw.address,
+                        private_key_hex: sw.private_key_hex,
+                        private_key_wif: sw.private_key_wif,
+                        has_backup: false,
+                    };
+                } else {
+                    const tr = BitcoinCrypto.generateTaprootAddress(network, backup);
+                    wallet = {
+                        type: 'taproot_p2tr',
+                        address: tr.address,
+                        private_key_hex: tr.private_key_hex,
+                        private_key_wif: tr.private_key_wif,
+                        internal_pubkey_hex: tr.internal_pubkey_hex,
+                        output_pubkey_hex: tr.output_pubkey_hex,
+                        tweaked_private_key_hex: tr.tweaked_private_key_hex,
+                        has_backup: tr.has_backup,
+                    };
+                    if (tr.has_backup) {
+                        wallet.backup_private_key_hex = tr.backup_private_key_hex;
+                        wallet.backup_private_key_wif = tr.backup_private_key_wif;
+                        wallet.backup_pubkey_hex = tr.backup_pubkey_hex;
+                        wallet.script_tree_hash = tr.script_tree_hash;
+                        wallet.output_parity = tr.output_parity;
+                    }
+                }
+
+                // Determine WIF for the bill
+                let billWif, isTweaked;
+                if (wallet.type === 'taproot_p2tr' && wallet.has_backup) {
+                    // Tweaked WIF goes on the bill
+                    const tweakedKey = BitcoinCrypto.hexToBytes(wallet.tweaked_private_key_hex);
+                    billWif = BitcoinCrypto.privateKeyToWif(tweakedKey, true, network);
+                    isTweaked = true;
+                } else if (wallet.type === 'taproot_p2tr') {
+                    // No backup: untweaked (internal) WIF on the bill
+                    billWif = wallet.private_key_wif;
+                    isTweaked = false;
+                } else {
+                    billWif = wallet.private_key_wif;
+                    isTweaked = false;
+                }
+                wallet.bill_wif = billWif;
+
+                // Generate bill image client-side
+                let billImageDataUrl = '';
+                if (billTemplateImg) {
+                    const addressType = currentType;
+                    billImageDataUrl = BillGenerator.generateBillDataURL(
+                        billTemplateImg, wallet.address, billWif, addressType, isTweaked, network
+                    );
+                }
+
+                currentWallet = { wallet, bill_image: billImageDataUrl, is_tweaked: isTweaked };
+                displayResults(currentWallet);
+
+            } catch (err) {
+                alert('Generation failed: ' + err.message);
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        }
+
+        function displayResults(data) {
+            const wallet = data.wallet;
+            const isTweaked = data.is_tweaked;
+
+            // Show bill image
+            document.getElementById('billImage').src = data.bill_image;
+
+            // Build details
+            const details = document.getElementById('walletDetails');
+            let html = '';
+
+            html += detailRow('Address', wallet.address);
+            html += detailRow('Address Type', wallet.type === 'taproot_p2tr' ? 'Taproot (P2TR)' : 'SegWit (P2WPKH)');
+
+            if (wallet.type === 'taproot_p2tr' && wallet.has_backup) {
+                // Taproot WITH backup: bill has the tweaked WIF
+                html += detailRow('Tweaked Private Key (WIF) \u2014 ON BILL',
+                                  wallet.bill_wif, true);
+                html += detailRow('Internal Private Key (WIF) \u2014 NOT on bill',
+                                  wallet.private_key_wif, true);
+                html += detailRow('Internal Private Key (Hex)', wallet.private_key_hex, true);
+                html += detailRow('Internal Public Key', wallet.internal_pubkey_hex);
+                html += detailRow('Output Public Key', wallet.output_pubkey_hex);
+                html += detailRow('Tweaked Private Key (Hex)', wallet.tweaked_private_key_hex, true);
+            } else {
+                // SegWit or Taproot without backup: bill has the standard WIF
+                html += detailRow('Private Key (WIF) \u2014 ON BILL',
+                                  wallet.private_key_wif, true);
+                html += detailRow('Private Key (Hex)', wallet.private_key_hex, true);
+
+                if (wallet.type === 'taproot_p2tr') {
+                    html += detailRow('Internal Public Key', wallet.internal_pubkey_hex);
+                    html += detailRow('Output Public Key', wallet.output_pubkey_hex);
+                    html += detailRow('Tweaked Private Key (Hex)', wallet.tweaked_private_key_hex, true);
+                }
+            }
+
+            if (wallet.has_backup) {
+                html += '<div style="margin: 1rem 0; padding-top: 1rem; border-top: 1px solid rgba(247,147,26,0.2);">';
+                html += '<div style="font-size: 0.9rem; font-weight: 600; color: var(--btc-orange); margin-bottom: 0.5rem;">Backup Recovery Key (keep safe \u2014 NOT on bill)</div>';
+                html += detailRow('Backup Private Key (WIF)', wallet.backup_private_key_wif, true);
+                html += detailRow('Backup Private Key (Hex)', wallet.backup_private_key_hex, true);
+                html += detailRow('Backup Public Key', wallet.backup_pubkey_hex);
+                html += '</div>';
+            }
+
+            details.innerHTML = html;
+
+            // Show/hide backup recovery download button
+            const backupBtn = document.getElementById('downloadBackupBtn');
+            backupBtn.style.display = wallet.has_backup ? 'inline-flex' : 'none';
+
+            // Show results
+            document.getElementById('results').classList.add('visible');
+            document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function detailRow(label, value, isWarning = false) {
+            const cls = isWarning ? 'detail-row warning' : 'detail-row';
+            return `<div class="${cls}">
+                <span class="label">${label}</span>
+                <span class="value">${value}</span>
+            </div>`;
+        }
+
+        function downloadBill() {
+            if (!currentWallet) return;
+
+            const wallet = currentWallet.wallet;
+            // Create download from the data URL
+            const link = document.createElement('a');
+            link.href = currentWallet.bill_image;
+            link.download = `bitcoin_bill_${wallet.address.substring(0, 12)}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function downloadBackupRecovery() {
+            if (!currentWallet) return;
+            const wallet = currentWallet.wallet;
+            if (!wallet.has_backup) return;
+
+            const network = document.getElementById('networkSelect').value;
+            const recovery = {
+                backup_private_key_wif: wallet.backup_private_key_wif,
+                internal_pubkey_hex: wallet.internal_pubkey_hex,
+                network: network,
+            };
+
+            const blob = new Blob([JSON.stringify(recovery, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `backup_recovery_${wallet.address.substring(0, 12)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+    </script>
+</body>
+</html>

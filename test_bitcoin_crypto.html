@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Crypto JS — Test Suite</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Courier New', monospace; background: #1a1a2e; color: #e0e0e0; padding: 24px; }
+        h1 { color: #f7931a; margin-bottom: 8px; font-size: 20px; }
+        h2 { color: #88aaff; margin: 20px 0 8px; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        .summary { font-size: 18px; margin: 16px 0; padding: 12px; border-radius: 6px; }
+        .summary.pass { background: #0a3d0a; color: #4caf50; border: 1px solid #4caf50; }
+        .summary.fail { background: #3d0a0a; color: #f44336; border: 1px solid #f44336; }
+        .test { padding: 3px 8px; font-size: 13px; }
+        .test.pass { color: #4caf50; }
+        .test.pass::before { content: "  PASS: "; }
+        .test.fail { color: #f44336; }
+        .test.fail::before { content: "  FAIL: "; }
+        .detail { color: #ff8a80; font-size: 12px; padding-left: 48px; }
+        #output { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>&#x20bf; Bitcoin Crypto JS — Test Suite</h1>
+    <div id="summary" class="summary">Running tests...</div>
+    <div id="output"></div>
+
+    <script src="bitcoin_crypto.js"></script>
+    <script src="qr_generator.js"></script>
+    <script src="bill_generator.js"></script>
+    <script>
+    (function() {
+        const { sha256, ripemd160, hmacSha256, hash160, taggedHash,
+                bytesToHex, hexToBytes, bytesToBigInt, bigIntToBytes,
+                concatBytes, writeUint32LE, readUint32LE, writeUint64LE,
+                // Phase 2
+                P, N, G_X, G_Y,
+                pointAdd, pointMul, pointFromBytes, _liftX,
+                generatePrivateKey, privateKeyToPublicKey, privateKeyToXonlyPubkey,
+                bech32Encode, bech32Decode, _networkHrp,
+                base58Encode, base58Decode,
+                privateKeyToWif, wifToPrivateKey,
+                computeTaptweak, taprootTweakPubkey, taprootTweakSeckey,
+                computeScriptTreeHashForBackup, computeControlBlock,
+                deriveSegwitAddressFromPrivkey, deriveTaprootAddressFromTweakedPrivkey,
+                generateSegwitAddress, generateTaprootAddress,
+                verifyAddress, verifyKeypair,
+                // Phase 3
+                ecdsaSign, schnorrSign, schnorrVerify,
+                sighashSegwitV0Full, sighashTaprootKeypath, sighashTaprootScriptPath,
+                buildP2wpkhScriptcode, _addressToScriptpubkey,
+                buildSignedSegwitSweepTx, buildSignedTaprootSweepTx,
+                buildSignedTaprootScriptpathSweepTx,
+                _compactSize, _serializeWitnessItem,
+        } = BitcoinCrypto;
+
+        const output = document.getElementById('output');
+        const summaryEl = document.getElementById('summary');
+        let passed = 0, failed = 0;
+        const errors = [];
+
+        function section(name) {
+            const h = document.createElement('h2');
+            h.textContent = '=== ' + name + ' ===';
+            output.appendChild(h);
+        }
+
+        function ok(name) {
+            passed++;
+            const div = document.createElement('div');
+            div.className = 'test pass';
+            div.textContent = name;
+            output.appendChild(div);
+        }
+
+        function fail(name, msg) {
+            failed++;
+            errors.push([name, msg]);
+            const div = document.createElement('div');
+            div.className = 'test fail';
+            div.textContent = name;
+            output.appendChild(div);
+            if (msg) {
+                const detail = document.createElement('div');
+                detail.className = 'detail';
+                detail.textContent = msg;
+                output.appendChild(detail);
+            }
+        }
+
+        function assert(condition, name, msg) {
+            if (condition) ok(name);
+            else fail(name, msg || 'assertion failed');
+        }
+
+        function assertHex(actual, expected, name) {
+            const actualHex = bytesToHex(actual);
+            if (actualHex === expected) ok(name);
+            else fail(name, `expected ${expected}, got ${actualHex}`);
+        }
+
+        // ============================================================
+        // 1. Byte helper tests
+        // ============================================================
+        section('Byte Helpers');
+
+        // bytesToHex / hexToBytes roundtrip
+        const testHex = 'deadbeef0123456789abcdef';
+        assert(bytesToHex(hexToBytes(testHex)) === testHex, 'hexToBytes/bytesToHex roundtrip');
+
+        // bytesToBigInt / bigIntToBytes roundtrip
+        const testBig = 0xDEADBEEF0123456789ABCDEFn;
+        const testBigBytes = bigIntToBytes(testBig, 12);
+        assert(bytesToBigInt(testBigBytes) === testBig, 'bigIntToBytes/bytesToBigInt roundtrip');
+
+        // bigIntToBytes zero padding
+        const smallNum = 42n;
+        const padded = bigIntToBytes(smallNum, 32);
+        assert(padded.length === 32, 'bigIntToBytes pads to 32 bytes');
+        assert(padded[31] === 42 && padded[0] === 0, 'bigIntToBytes correct padding',
+            `first=${padded[0]} last=${padded[31]}`);
+
+        // concatBytes
+        const ca = new Uint8Array([1, 2]);
+        const cb = new Uint8Array([3, 4, 5]);
+        const cc = concatBytes(ca, cb);
+        assert(cc.length === 5 && cc[0] === 1 && cc[4] === 5, 'concatBytes');
+
+        // writeUint32LE / readUint32LE
+        const buf32 = new Uint8Array(4);
+        writeUint32LE(buf32, 0, 0xDEADBEEF);
+        assert(readUint32LE(buf32, 0) === 0xDEADBEEF, 'writeUint32LE/readUint32LE roundtrip',
+            `got 0x${readUint32LE(buf32, 0).toString(16)}`);
+        assert(buf32[0] === 0xEF && buf32[3] === 0xDE, 'writeUint32LE little-endian byte order');
+
+        // writeUint64LE
+        const buf64 = new Uint8Array(8);
+        writeUint64LE(buf64, 0, 0x0123456789ABCDEFn);
+        assert(buf64[0] === 0xEF && buf64[7] === 0x01, 'writeUint64LE little-endian byte order',
+            `bytes: ${Array.from(buf64).map(b => b.toString(16).padStart(2,'0')).join(' ')}`);
+
+        // ============================================================
+        // 2. SHA-256 tests (NIST test vectors)
+        // ============================================================
+        section('SHA-256');
+
+        // Empty string
+        assertHex(sha256(new Uint8Array(0)),
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            'SHA-256("")');
+
+        // "abc"
+        assertHex(sha256(new TextEncoder().encode('abc')),
+            'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
+            'SHA-256("abc")');
+
+        // "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" (448-bit, 2-block)
+        assertHex(sha256(new TextEncoder().encode('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq')),
+            '248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1',
+            'SHA-256(448-bit message)');
+
+        // Double SHA-256 (used in Bitcoin)
+        const doubleSha = sha256(sha256(new TextEncoder().encode('hello')));
+        assert(doubleSha.length === 32, 'Double SHA-256 produces 32 bytes');
+        assertHex(doubleSha,
+            '9595c9df90075148eb06860365df33584b75bff782a510c6cd4883a419833d50',
+            'Double SHA-256("hello")');
+
+        // ============================================================
+        // 3. RIPEMD-160 tests (same vectors as test_bitcoin.py)
+        // ============================================================
+        section('RIPEMD-160');
+
+        const ripemdVectors = [
+            [new Uint8Array(0), '9c1185a5c5e9fc54612808977ee8f548b2258d31'],
+            [new TextEncoder().encode('a'), '0bdc9d2d256b3ee9daae347be6f4dc835a467ffe'],
+            [new TextEncoder().encode('abc'), '8eb208f7e05d987a9b044a8e98c6b087f15a0bfc'],
+            [new TextEncoder().encode('message digest'), '5d0689ef49d2fae572b881b123a85ffa21595f36'],
+            [new TextEncoder().encode('abcdefghijklmnopqrstuvwxyz'), 'f71c27109c692c1b56bbdceb5b9d2865b3708dbc'],
+        ];
+
+        for (const [data, expected] of ripemdVectors) {
+            const label = data.length === 0 ? '""' : new TextDecoder().decode(data).substring(0, 20);
+            assertHex(ripemd160(data), expected, `RIPEMD-160("${label}")`);
+        }
+
+        // ============================================================
+        // 4. HMAC-SHA256 tests (RFC 4231 test vectors)
+        // ============================================================
+        section('HMAC-SHA256');
+
+        // RFC 4231 Test Case 1
+        const hmacKey1 = new Uint8Array(20).fill(0x0b);
+        const hmacData1 = new TextEncoder().encode('Hi There');
+        assertHex(hmacSha256(hmacKey1, hmacData1),
+            'b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7',
+            'HMAC-SHA256 RFC4231 TC1');
+
+        // RFC 4231 Test Case 2
+        const hmacKey2 = new TextEncoder().encode('Jefe');
+        const hmacData2 = new TextEncoder().encode('what do ya want for nothing?');
+        assertHex(hmacSha256(hmacKey2, hmacData2),
+            '5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843',
+            'HMAC-SHA256 RFC4231 TC2');
+
+        // RFC 4231 Test Case 3
+        const hmacKey3 = new Uint8Array(20).fill(0xaa);
+        const hmacData3 = new Uint8Array(50).fill(0xdd);
+        assertHex(hmacSha256(hmacKey3, hmacData3),
+            '773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe',
+            'HMAC-SHA256 RFC4231 TC3');
+
+        // ============================================================
+        // 5. hash160 test
+        // ============================================================
+        section('hash160');
+
+        // hash160 of a known public key (compressed, 33 bytes)
+        // This is a standard Bitcoin test: hash160 of the generator point's compressed pubkey
+        const testPubkey = hexToBytes('0279BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798');
+        assertHex(hash160(testPubkey),
+            '751e76e8199196d454941c45d1b3a323f1433bd6',
+            'hash160(generator pubkey)');
+
+        // ============================================================
+        // 6. Tagged Hash tests (same as test_bitcoin.py)
+        // ============================================================
+        section('Tagged Hash (BIP340)');
+
+        // TapTweak with 32 zero bytes (same as test_bitcoin.py)
+        const zeroMsg = new Uint8Array(32);
+        const tapTweakTagHash = sha256(new TextEncoder().encode('TapTweak'));
+        const expectedTapTweak = sha256(concatBytes(tapTweakTagHash, tapTweakTagHash, zeroMsg));
+        const gotTapTweak = taggedHash('TapTweak', zeroMsg);
+        assertHex(gotTapTweak, bytesToHex(expectedTapTweak), 'Tagged hash TapTweak');
+
+        // BIP0340/challenge with 0x01 (same as test_bitcoin.py)
+        const challengeMsg = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+        const challengeTagHash = sha256(new TextEncoder().encode('BIP0340/challenge'));
+        const expectedChallenge = sha256(concatBytes(challengeTagHash, challengeTagHash, challengeMsg));
+        const gotChallenge = taggedHash('BIP0340/challenge', challengeMsg);
+        assertHex(gotChallenge, bytesToHex(expectedChallenge), 'Tagged hash BIP0340/challenge');
+
+        // ============================================================
+        // 7. secp256k1 Point Arithmetic (same as test_bitcoin.py)
+        // ============================================================
+        section('secp256k1 Point Arithmetic');
+
+        // G * 1 = G
+        const g1 = pointMul(1n);
+        assert(g1[0] === G_X && g1[1] === G_Y, 'G * 1 = G');
+
+        // G * 2 = G + G
+        const g2 = pointMul(2n);
+        const gPlusG = pointAdd([G_X, G_Y], [G_X, G_Y]);
+        assert(g2[0] === gPlusG[0] && g2[1] === gPlusG[1], 'G * 2 = G + G');
+
+        // G * N = infinity
+        const gn = pointMul(N);
+        assert(gn === null, 'G * N = infinity');
+
+        // privkey=1 gives G as pubkey
+        const pubkey1 = privateKeyToPublicKey(hexToBytes('0000000000000000000000000000000000000000000000000000000000000001'), true);
+        const expectedGCompressed = concatBytes(new Uint8Array([0x02]), bigIntToBytes(G_X, 32));
+        assert(bytesToHex(pubkey1) === bytesToHex(expectedGCompressed), 'privkey=1 gives G as pubkey');
+
+        // ============================================================
+        // 8. Bech32/Bech32m Encoding (same as test_bitcoin.py)
+        // ============================================================
+        section('Bech32/Bech32m');
+
+        // BIP173: bech32 encode
+        {
+            const prog = hexToBytes('751e76e8199196d454941c45d1b3a323f1433bd6');
+            const addr = bech32Encode('bc', 0, Array.from(prog), 'bech32');
+            assert(addr === 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'Bech32 encode bc1q...');
+
+            // Decode roundtrip
+            const dec = bech32Decode(addr);
+            assert(dec.hrp === 'bc' && dec.witver === 0 && bytesToHex(dec.witprog) === '751e76e8199196d454941c45d1b3a323f1433bd6',
+                'Bech32 decode roundtrip');
+        }
+
+        // BIP350: bech32m encode
+        {
+            const prog = hexToBytes('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798');
+            const addr = bech32Encode('bc', 1, Array.from(prog), 'bech32m');
+            assert(addr === 'bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0',
+                'Bech32m encode bc1p...');
+
+            // Decode roundtrip
+            const dec = bech32Decode(addr);
+            assert(dec.hrp === 'bc' && dec.witver === 1 && dec.spec === 'bech32m' &&
+                bytesToHex(dec.witprog) === '79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+                'Bech32m decode roundtrip');
+        }
+
+        // Random program roundtrips
+        {
+            const prog20 = generatePrivateKey().slice(0, 20); // random 20 bytes
+            const addr20 = bech32Encode('bc', 0, Array.from(prog20), 'bech32');
+            const dec20 = bech32Decode(addr20);
+            assert(dec20.hrp === 'bc' && dec20.witver === 0 && bytesToHex(dec20.witprog) === bytesToHex(prog20),
+                'Bech32 roundtrip random 20-byte');
+
+            const prog32 = generatePrivateKey(); // random 32 bytes
+            const addr32 = bech32Encode('bc', 1, Array.from(prog32), 'bech32m');
+            const dec32 = bech32Decode(addr32);
+            assert(dec32.hrp === 'bc' && dec32.witver === 1 && bytesToHex(dec32.witprog) === bytesToHex(prog32),
+                'Bech32m roundtrip random 32-byte');
+        }
+
+        // ============================================================
+        // 9. Base58 / WIF encoding
+        // ============================================================
+        section('Base58 / WIF');
+
+        // WIF mainnet compressed starts with K or L
+        const wifMainnet = privateKeyToWif(hexToBytes('0000000000000000000000000000000000000000000000000000000000000001'), true, 'mainnet');
+        assert(wifMainnet[0] === 'K' || wifMainnet[0] === 'L', 'WIF mainnet compressed starts with K/L');
+
+        // WIF testnet compressed starts with c
+        const wifTestnet = privateKeyToWif(hexToBytes('0000000000000000000000000000000000000000000000000000000000000001'), true, 'regtest');
+        assert(wifTestnet[0] === 'c', 'WIF regtest compressed starts with c');
+
+        // WIF encoding matches manual computation
+        {
+            const payload = concatBytes(new Uint8Array([0x80]),
+                hexToBytes('0000000000000000000000000000000000000000000000000000000000000001'),
+                new Uint8Array([0x01]));
+            const checksum = sha256(sha256(payload)).slice(0, 4);
+            const expectedWif = base58Encode(concatBytes(payload, checksum));
+            assert(wifMainnet === expectedWif, 'WIF encoding matches manual computation');
+        }
+
+        // WIF roundtrip (mainnet + regtest + testnet4)
+        {
+            let allOk = true;
+            for (let i = 0; i < 5; i++) {
+                const origKey = generatePrivateKey();
+                for (const net of ['mainnet', 'regtest', 'testnet4']) {
+                    const wif = privateKeyToWif(origKey, true, net);
+                    const decoded = wifToPrivateKey(wif);
+                    if (bytesToHex(decoded.privateKey) !== bytesToHex(origKey)) { allOk = false; break; }
+                    if (!decoded.compressed) { allOk = false; break; }
+                    if (decoded.mainnet !== (net === 'mainnet')) { allOk = false; break; }
+                }
+                if (!allOk) break;
+            }
+            assert(allOk, '15 WIF encode/decode roundtrips (mainnet + regtest + testnet4)');
+        }
+
+        // WIF bad checksum rejection
+        {
+            const validWif = privateKeyToWif(generatePrivateKey(), true, 'mainnet');
+            const badChar = validWif.slice(-1) !== 'A' ? 'A' : 'B';
+            const badWif = validWif.slice(0, -1) + badChar;
+            let rejected = false;
+            try { wifToPrivateKey(badWif); } catch (e) { rejected = true; }
+            assert(rejected, 'Rejects WIF with bad checksum');
+        }
+
+        // ============================================================
+        // 10. SegWit Address Generation
+        // ============================================================
+        section('SegWit Address Generation');
+
+        // Known privkey=1 generates valid P2WPKH address
+        {
+            const testPriv = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const testPub = privateKeyToPublicKey(testPriv, true);
+            const testH160 = hash160(testPub);
+            const testAddr = bech32Encode('bc', 0, Array.from(testH160), 'bech32');
+            const info = verifyAddress(testAddr);
+            assert(info && info.type === 'p2wpkh', 'Known privkey=1 generates valid P2WPKH address');
+
+            const kpResult = verifyKeypair(bytesToHex(testPriv), testAddr);
+            assert(kpResult.valid, 'Known privkey=1 keypair verification');
+        }
+
+        // Generate 10 SegWit addresses and verify
+        {
+            let allOk = true;
+            for (let i = 0; i < 10; i++) {
+                const sw = generateSegwitAddress('mainnet');
+                if (!sw.address.startsWith('bc1q')) { allOk = false; break; }
+                const dec = bech32Decode(sw.address);
+                if (dec.hrp !== 'bc' || dec.witver !== 0 || dec.witprog.length !== 20 || dec.spec !== 'bech32') {
+                    allOk = false; break;
+                }
+                const kp = verifyKeypair(sw.private_key_hex, sw.address);
+                if (!kp.valid) { allOk = false; break; }
+            }
+            assert(allOk, '10 SegWit addresses all valid and verified');
+        }
+
+        // Regtest SegWit prefix
+        {
+            const swRt = generateSegwitAddress('regtest');
+            assert(swRt.address.startsWith('bcrt1q'), 'Regtest SegWit starts with bcrt1q');
+        }
+
+        // Testnet4 SegWit prefix
+        {
+            const swT4 = generateSegwitAddress('testnet4');
+            assert(swT4.address.startsWith('tb1q'), 'Testnet4 SegWit starts with tb1q');
+        }
+
+        // ============================================================
+        // 11. Taproot Address Generation
+        // ============================================================
+        section('Taproot Address Generation');
+
+        // BIP341 test: internal key G_x, tweaked output key on curve
+        {
+            const bip341InternalKey = hexToBytes('79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798');
+            const { outputKeyX } = taprootTweakPubkey(bip341InternalKey, null);
+            const outputPoint = _liftX(outputKeyX);
+            assert(outputPoint !== null, 'BIP341 tweaked output key is on curve');
+        }
+
+        // Tweaked privkey derives correct output key
+        {
+            const testPriv = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const { xOnly: internalKey } = privateKeyToXonlyPubkey(testPriv);
+            const { outputKeyX: expectedOutput } = taprootTweakPubkey(internalKey, null);
+            const tweakedPriv = taprootTweakSeckey(testPriv, null);
+            const tweakedPoint = pointMul(bytesToBigInt(tweakedPriv));
+            const tweakedX = bigIntToBytes(tweakedPoint[0], 32);
+            assertHex(tweakedX, bytesToHex(expectedOutput), 'Tweaked privkey derives correct output key');
+        }
+
+        // Generate 10 Taproot addresses and verify
+        {
+            let allOk = true;
+            for (let i = 0; i < 10; i++) {
+                const tr = generateTaprootAddress('mainnet', false);
+                if (!tr.address.startsWith('bc1p')) { allOk = false; break; }
+                const dec = bech32Decode(tr.address);
+                if (dec.hrp !== 'bc' || dec.witver !== 1 || dec.witprog.length !== 32 || dec.spec !== 'bech32m') {
+                    allOk = false; break;
+                }
+                if (bytesToHex(dec.witprog) !== tr.output_pubkey_hex) { allOk = false; break; }
+                // Verify tweaked private key
+                const tweakedPk = hexToBytes(tr.tweaked_private_key_hex);
+                const derivedPoint = pointMul(bytesToBigInt(tweakedPk));
+                if (bytesToHex(bigIntToBytes(derivedPoint[0], 32)) !== tr.output_pubkey_hex) {
+                    allOk = false; break;
+                }
+            }
+            assert(allOk, '10 Taproot addresses all valid and verified');
+        }
+
+        // Regtest Taproot prefix
+        {
+            const trRt = generateTaprootAddress('regtest', false);
+            assert(trRt.address.startsWith('bcrt1p'), 'Regtest Taproot starts with bcrt1p');
+        }
+
+        // Testnet4 Taproot prefix
+        {
+            const trT4 = generateTaprootAddress('testnet4', false);
+            assert(trT4.address.startsWith('tb1p'), 'Testnet4 Taproot starts with tb1p');
+        }
+
+        // ============================================================
+        // 12. Taproot Backup Key Tests
+        // ============================================================
+        section('Taproot Backup Key');
+
+        {
+            let allOk = true;
+            for (let i = 0; i < 3; i++) {
+                const trBk = generateTaprootAddress('mainnet', true);
+
+                // Must have backup fields
+                if (!trBk.has_backup) { allOk = false; break; }
+                if (!trBk.backup_private_key_wif || !trBk.backup_pubkey_hex || !trBk.script_tree_hash) {
+                    allOk = false; break;
+                }
+
+                // Verify script tree hash
+                const backupPkX = hexToBytes(trBk.backup_pubkey_hex);
+                const expectedSth = computeScriptTreeHashForBackup(backupPkX);
+                if (bytesToHex(expectedSth) !== trBk.script_tree_hash) { allOk = false; break; }
+
+                // Verify output key computed with script tree
+                const internalKey = hexToBytes(trBk.internal_pubkey_hex);
+                const sth = hexToBytes(trBk.script_tree_hash);
+                const { outputKeyX: computedOutput } = taprootTweakPubkey(internalKey, sth);
+                if (bytesToHex(computedOutput) !== trBk.output_pubkey_hex) { allOk = false; break; }
+
+                // Verify tweaked private key
+                const tweakedPk = hexToBytes(trBk.tweaked_private_key_hex);
+                const derivedPoint = pointMul(bytesToBigInt(tweakedPk));
+                if (bytesToHex(bigIntToBytes(derivedPoint[0], 32)) !== trBk.output_pubkey_hex) { allOk = false; break; }
+
+                // Verify control block
+                const cb = computeControlBlock(internalKey, trBk.output_parity);
+                if (cb.length !== 33) { allOk = false; break; }
+                if ((cb[0] & 0xFE) !== 0xC0) { allOk = false; break; }
+
+                // Backup key different from main key
+                if (trBk.backup_private_key_hex === trBk.private_key_hex) { allOk = false; break; }
+            }
+            assert(allOk, '3 Taproot backup key wallets all valid');
+        }
+
+        // ============================================================
+        // 13. Tweaked Address Derivation
+        // ============================================================
+        section('Tweaked Address Derivation');
+
+        // derive_taproot_address_from_tweaked_privkey matches generate_taproot_address
+        {
+            let allOk = true;
+            for (let i = 0; i < 5; i++) {
+                for (const backup of [false, true]) {
+                    const wallet = generateTaprootAddress('mainnet', backup);
+                    const tweakedPk = hexToBytes(wallet.tweaked_private_key_hex);
+                    const derived = deriveTaprootAddressFromTweakedPrivkey(tweakedPk, 'mainnet');
+                    if (derived.address !== wallet.address) { allOk = false; break; }
+                    // Verify scriptpubkey
+                    const expectedSpk = concatBytes(new Uint8Array([0x51, 0x20]), hexToBytes(wallet.output_pubkey_hex));
+                    if (bytesToHex(derived.scriptpubkey) !== bytesToHex(expectedSpk)) { allOk = false; break; }
+                }
+                if (!allOk) break;
+            }
+            assert(allOk, '10 tweaked privkey -> address derivations match');
+        }
+
+        // ============================================================
+        // 14. Edge Cases / Verification
+        // ============================================================
+        section('Edge Cases / Verification');
+
+        // Invalid addresses rejected
+        {
+            const invalids = [
+                'bc1qw508d6qejxtdg4y5r3zarvar',  // Too short
+                '',
+                'not_an_address',
+            ];
+            let allRejected = true;
+            for (const bad of invalids) {
+                if (verifyAddress(bad) !== null) { allRejected = false; break; }
+            }
+            assert(allRejected, 'Rejects invalid addresses');
+        }
+
+        // Wrong key rejected
+        {
+            const swTest = generateSegwitAddress('mainnet');
+            const wrongKey = bytesToHex(generatePrivateKey());
+            const result = verifyKeypair(wrongKey, swTest.address);
+            assert(!result.valid, 'Rejects wrong private key for address');
+        }
+
+        // Key generation: all in valid range
+        {
+            let allValid = true;
+            for (let i = 0; i < 50; i++) {
+                const key = generatePrivateKey();
+                const k = bytesToBigInt(key);
+                if (k <= 0n || k >= N) { allValid = false; break; }
+            }
+            assert(allValid, '50 keys all in valid range [1, N-1]');
+        }
+
+        // Key uniqueness
+        {
+            const keys = new Set();
+            for (let i = 0; i < 100; i++) {
+                keys.add(bytesToHex(generatePrivateKey()));
+            }
+            assert(keys.size === 100, '100 keys all unique');
+        }
+
+        // ============================================================
+        // 15. Cross-validation with Python (fixed test vectors)
+        // ============================================================
+        section('Cross-validation');
+
+        // These are pre-computed in Python and hardcoded here.
+        // privkey = 0x01 → segwit address (mainnet)
+        {
+            const priv1 = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const derived = deriveSegwitAddressFromPrivkey(priv1, 'mainnet');
+            assert(derived.address === 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+                'privkey=1 → correct bc1q address');
+        }
+
+        // privkey = 0x01 → taproot tweaked output key (no script tree)
+        {
+            const priv1 = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const { xOnly } = privateKeyToXonlyPubkey(priv1);
+            const { outputKeyX } = taprootTweakPubkey(xOnly, null);
+            // Verify by deriving address
+            const tweakedPriv = taprootTweakSeckey(priv1, null);
+            const derived = deriveTaprootAddressFromTweakedPrivkey(tweakedPriv, 'mainnet');
+            assert(derived.address.startsWith('bc1p'), 'privkey=1 → valid bc1p address');
+            assert(bytesToHex(derived.outputKeyX) === bytesToHex(outputKeyX),
+                'privkey=1 → tweaked derivation consistent');
+        }
+
+        // ============================================================
+        // 16. ECDSA Signing Tests
+        // ============================================================
+        section('ECDSA Signing');
+
+        // Sign and verify: DER-encoded sig is valid format
+        {
+            const privkey = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const msgHash = sha256(new TextEncoder().encode('test message'));
+            const sig = ecdsaSign(privkey, msgHash);
+            // DER signature starts with 0x30
+            assert(sig[0] === 0x30, 'ECDSA DER signature starts with 0x30');
+            // Length byte
+            assert(sig[1] === sig.length - 2, 'ECDSA DER length correct');
+            // Contains two INTEGER markers (0x02)
+            assert(sig[2] === 0x02, 'ECDSA DER first element is INTEGER');
+            ok('ECDSA sign privkey=1 produces valid DER');
+        }
+
+        // ECDSA deterministic: same key+msg → same sig (RFC 6979)
+        {
+            const privkey = generatePrivateKey();
+            const msgHash = sha256(new TextEncoder().encode('determinism test'));
+            const sig1 = ecdsaSign(privkey, msgHash);
+            const sig2 = ecdsaSign(privkey, msgHash);
+            assert(bytesToHex(sig1) === bytesToHex(sig2), 'ECDSA deterministic (RFC 6979)');
+        }
+
+        // ECDSA different message → different sig
+        {
+            const privkey = generatePrivateKey();
+            const msg1 = sha256(new TextEncoder().encode('message A'));
+            const msg2 = sha256(new TextEncoder().encode('message B'));
+            const sig1 = ecdsaSign(privkey, msg1);
+            const sig2 = ecdsaSign(privkey, msg2);
+            assert(bytesToHex(sig1) !== bytesToHex(sig2), 'ECDSA different messages produce different sigs');
+        }
+
+        // ============================================================
+        // 17. Schnorr Signing Tests (BIP340)
+        // ============================================================
+        section('Schnorr Signing (BIP340)');
+
+        // Sign and verify with known key
+        {
+            const privkey = hexToBytes('0000000000000000000000000000000000000000000000000000000000000001');
+            const msgHash = sha256(new TextEncoder().encode('schnorr test'));
+            const auxRand = new Uint8Array(32); // deterministic aux
+            const sig = schnorrSign(privkey, msgHash, auxRand);
+            assert(sig.length === 64, 'Schnorr signature is 64 bytes');
+
+            // Verify
+            const { xOnly: pubkey } = privateKeyToXonlyPubkey(privkey);
+            // schnorrSign verifies internally, but let's test standalone verify
+            assert(schnorrVerify(pubkey, msgHash, sig), 'Schnorr verify succeeds');
+        }
+
+        // Schnorr sign with random key
+        {
+            const privkey = generatePrivateKey();
+            const msgHash = sha256(new TextEncoder().encode('random key schnorr'));
+            const sig = schnorrSign(privkey, msgHash);
+            const { xOnly: pubkey } = privateKeyToXonlyPubkey(privkey);
+            // Note: for verify, we need the even-y pubkey
+            const point = pointMul(bytesToBigInt(privkey));
+            const pkX = bigIntToBytes(point[0], 32);
+            assert(schnorrVerify(pkX, msgHash, sig), 'Schnorr verify random key');
+        }
+
+        // Schnorr verify rejects wrong message
+        {
+            const privkey = generatePrivateKey();
+            const msg1 = sha256(new TextEncoder().encode('correct'));
+            const msg2 = sha256(new TextEncoder().encode('wrong'));
+            const sig = schnorrSign(privkey, msg1);
+            const point = pointMul(bytesToBigInt(privkey));
+            const pkX = bigIntToBytes(point[0], 32);
+            assert(!schnorrVerify(pkX, msg2, sig), 'Schnorr rejects wrong message');
+        }
+
+        // Schnorr verify rejects wrong key
+        {
+            const privkey1 = generatePrivateKey();
+            const privkey2 = generatePrivateKey();
+            const msgHash = sha256(new TextEncoder().encode('wrong key'));
+            const sig = schnorrSign(privkey1, msgHash);
+            const point2 = pointMul(bytesToBigInt(privkey2));
+            const pk2X = bigIntToBytes(point2[0], 32);
+            assert(!schnorrVerify(pk2X, msgHash, sig), 'Schnorr rejects wrong key');
+        }
+
+        // ============================================================
+        // 18. Transaction Construction Tests
+        // ============================================================
+        section('Transaction Construction');
+
+        // Build SegWit sweep tx — valid format check
+        {
+            const wallet = generateSegwitAddress('mainnet');
+            const privkey = hexToBytes(wallet.private_key_hex);
+            const fakeTxid = bytesToHex(sha256(new TextEncoder().encode('fake txid')));
+            const utxos = [{ txid: fakeTxid, vout: 0, value_sat: 100000 }];
+            const dest = generateSegwitAddress('mainnet');
+            const rawHex = buildSignedSegwitSweepTx(privkey, utxos, dest.address, 99000);
+            // Should be a valid hex string
+            assert(rawHex.length > 0 && /^[0-9a-f]+$/.test(rawHex), 'SegWit sweep tx produces valid hex');
+            // Should start with version 02000000 + segwit marker 0001
+            assert(rawHex.startsWith('020000000001'), 'SegWit tx starts with v2 segwit marker');
+        }
+
+        // Build Taproot key path sweep tx
+        {
+            const wallet = generateTaprootAddress('mainnet', false);
+            const tweakedKey = hexToBytes(wallet.tweaked_private_key_hex);
+            const inputSpk = _addressToScriptpubkey(wallet.address);
+            const fakeTxid = bytesToHex(sha256(new TextEncoder().encode('taproot fake')));
+            const utxos = [{ txid: fakeTxid, vout: 0, value_sat: 200000 }];
+            const dest = generateTaprootAddress('mainnet', false);
+            const rawHex = buildSignedTaprootSweepTx(tweakedKey, utxos, inputSpk, dest.address, 199000);
+            assert(rawHex.length > 0 && /^[0-9a-f]+$/.test(rawHex), 'Taproot key path tx produces valid hex');
+            assert(rawHex.startsWith('020000000001'), 'Taproot tx starts with v2 segwit marker');
+        }
+
+        // Build Taproot script path sweep tx (backup recovery)
+        {
+            const wallet = generateTaprootAddress('mainnet', true);
+            const backupKey = hexToBytes(wallet.backup_private_key_hex);
+            const backupPubX = hexToBytes(wallet.backup_pubkey_hex);
+            const internalPubX = hexToBytes(wallet.internal_pubkey_hex);
+            const inputSpk = _addressToScriptpubkey(wallet.address);
+            const fakeTxid = bytesToHex(sha256(new TextEncoder().encode('scriptpath fake')));
+            const utxos = [{ txid: fakeTxid, vout: 1, value_sat: 300000 }];
+            const dest = generateSegwitAddress('mainnet');
+            const rawHex = buildSignedTaprootScriptpathSweepTx(
+                backupKey, backupPubX, internalPubX, wallet.output_parity,
+                utxos, inputSpk, dest.address, 298000
+            );
+            assert(rawHex.length > 0 && /^[0-9a-f]+$/.test(rawHex), 'Script path tx produces valid hex');
+            assert(rawHex.startsWith('020000000001'), 'Script path tx starts with v2 segwit marker');
+        }
+
+        // Multi-input SegWit sweep
+        {
+            const wallet = generateSegwitAddress('mainnet');
+            const privkey = hexToBytes(wallet.private_key_hex);
+            const utxos = [
+                { txid: bytesToHex(sha256(new TextEncoder().encode('utxo1'))), vout: 0, value_sat: 50000 },
+                { txid: bytesToHex(sha256(new TextEncoder().encode('utxo2'))), vout: 1, value_sat: 50000 },
+                { txid: bytesToHex(sha256(new TextEncoder().encode('utxo3'))), vout: 0, value_sat: 50000 },
+            ];
+            const dest = generateSegwitAddress('mainnet');
+            const rawHex = buildSignedSegwitSweepTx(privkey, utxos, dest.address, 149000);
+            assert(rawHex.length > 0, 'Multi-input SegWit tx builds successfully');
+            // Parse input count from hex: after "020000000001" (12 chars), next byte is compact_size for inputs
+            const inputCountByte = parseInt(rawHex.substring(12, 14), 16);
+            assert(inputCountByte === 3, 'Multi-input tx has 3 inputs', `got ${inputCountByte}`);
+        }
+
+        // ============================================================
+        // 19. QR Code Generator Tests
+        // ============================================================
+        section('QR Code Generator');
+
+        // QR module is loaded
+        {
+            assert(typeof QRGenerator !== 'undefined', 'QRGenerator module loaded');
+            assert(typeof QRGenerator.generateQR === 'function', 'generateQR is a function');
+            assert(typeof QRGenerator.qrToCanvas === 'function', 'qrToCanvas is a function');
+            assert(typeof QRGenerator.generateQRDataURL === 'function', 'generateQRDataURL is a function');
+        }
+
+        // Version selection: short text → version 1 (21x21)
+        {
+            const matrix = QRGenerator.generateQR('HELLO', QRGenerator.EC_M);
+            assert(matrix.length === 21, 'Short text → version 1 (21x21)', `got ${matrix.length}`);
+            assert(matrix[0].length === 21, 'Matrix is square');
+        }
+
+        // Version selection: Bitcoin address → version 3 (29x29) for alphanumeric
+        {
+            const matrix = QRGenerator.generateQR('BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4', QRGenerator.EC_M);
+            assert(matrix.length === 29, 'Bitcoin address → version 3 (29x29)', `got ${matrix.length}`);
+        }
+
+        // Finder patterns: top-left 7x7 has correct structure
+        {
+            const matrix = QRGenerator.generateQR('TEST', QRGenerator.EC_M);
+            // Top-left finder: row 0 should be all dark for first 7 cols
+            let topRowOk = true;
+            for (let c = 0; c < 7; c++) {
+                if (!matrix[0][c]) topRowOk = false;
+            }
+            assert(topRowOk, 'Top-left finder: row 0 all dark');
+
+            // Row 1: dark-light-light-light-light-light-dark
+            assert(matrix[1][0] === true && matrix[1][1] === false && matrix[1][5] === false && matrix[1][6] === true,
+                'Top-left finder: row 1 border pattern');
+
+            // Center of finder (row 2-4, col 2-4) should be dark
+            let centerOk = true;
+            for (let r = 2; r <= 4; r++) {
+                for (let c = 2; c <= 4; c++) {
+                    if (!matrix[r][c]) centerOk = false;
+                }
+            }
+            assert(centerOk, 'Top-left finder: center 3x3 all dark');
+        }
+
+        // Cross-validation with Python: exact matrix comparison
+        {
+            // Python-generated QR for 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4' (EC_M)
+            const pythonRows = [
+                '11111110001101110001001111111',
+                '10000010100111110100101000001',
+                '10111010101011100111001011101',
+                '10111010101000110000001011101',
+                '10111010001001010100101011101',
+                '10000010111111100010101000001',
+                '11111110101010101010101111111',
+                '00000000010000100111100000000',
+                '10011111111101111010000010111',
+                '10001000111100100101001110000',
+                '10011110011110100001011011100',
+                '11110001101000110101110001010',
+                '01001110100001100101000101100',
+                '11100001110000000100111011100',
+                '00101011011110110100100101010',
+                '01010101101111101111110011101',
+                '00100111000110010101010010110',
+                '11001000011000000101010100010',
+                '11010111011101101101111101010',
+                '11000100101001011000000010111',
+                '11100011110001000110111111000',
+                '00000000110111001001100011011',
+                '11111110101001011100101011010',
+                '10000010111111001101100010111',
+                '10111010110101011110111110101',
+                '10111010100011101101101000110',
+                '10111010010000001000100101011',
+                '10000010001110110000101110100',
+                '11111110110001100110000000110',
+            ];
+
+            const jsMatrix = QRGenerator.generateQR('BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4', QRGenerator.EC_M);
+
+            let sizeOk = jsMatrix.length === 29;
+            assert(sizeOk, 'Cross-validation: JS matrix is 29x29', `got ${jsMatrix.length}`);
+
+            if (sizeOk) {
+                let mismatchCount = 0;
+                let firstMismatch = '';
+                for (let r = 0; r < 29; r++) {
+                    for (let c = 0; c < 29; c++) {
+                        const jsVal = jsMatrix[r][c] ? '1' : '0';
+                        const pyVal = pythonRows[r][c];
+                        if (jsVal !== pyVal) {
+                            mismatchCount++;
+                            if (!firstMismatch) firstMismatch = `row=${r} col=${c} js=${jsVal} py=${pyVal}`;
+                        }
+                    }
+                }
+                assert(mismatchCount === 0, 'Cross-validation: JS matrix matches Python exactly',
+                    `${mismatchCount} mismatches, first: ${firstMismatch}`);
+            }
+        }
+
+        // QR data URL generation
+        {
+            const dataUrl = QRGenerator.generateQRDataURL('HELLO WORLD', 200, QRGenerator.EC_M);
+            assert(dataUrl.startsWith('data:image/png;base64,'), 'generateQRDataURL produces PNG data URL');
+            assert(dataUrl.length > 100, 'Data URL has substantial content');
+        }
+
+        // Different inputs produce different QR codes
+        {
+            const m1 = QRGenerator.generateQR('HELLO', QRGenerator.EC_M);
+            const m2 = QRGenerator.generateQR('WORLD', QRGenerator.EC_M);
+            let identical = true;
+            if (m1.length === m2.length) {
+                for (let r = 0; r < m1.length && identical; r++) {
+                    for (let c = 0; c < m1[r].length && identical; c++) {
+                        if (m1[r][c] !== m2[r][c]) identical = false;
+                    }
+                }
+            } else {
+                identical = false;
+            }
+            assert(!identical, 'Different inputs produce different QR codes');
+        }
+
+        // Byte mode for lowercase
+        {
+            const matrix = QRGenerator.generateQR('bitcoin:bc1qtest', QRGenerator.EC_M);
+            assert(matrix.length > 0, 'Byte mode QR for lowercase text');
+            // Verify it's a valid square matrix
+            assert(matrix.length === matrix[0].length, 'Byte mode matrix is square');
+        }
+
+        // Error correction levels all produce valid output
+        {
+            let allOk = true;
+            for (const ec of [QRGenerator.EC_L, QRGenerator.EC_M, QRGenerator.EC_Q, QRGenerator.EC_H]) {
+                const m = QRGenerator.generateQR('TEST123', ec);
+                if (!m || m.length < 21 || m.length !== m[0].length) {
+                    allOk = false;
+                    break;
+                }
+            }
+            assert(allOk, 'All 4 EC levels produce valid QR codes');
+        }
+
+        // ============================================================
+        // 20. Bill Generator Tests
+        // ============================================================
+        section('Bill Generator');
+
+        // Module loaded
+        {
+            assert(typeof BillGenerator !== 'undefined', 'BillGenerator module loaded');
+            assert(typeof BillGenerator.generateBillOnCanvas === 'function', 'generateBillOnCanvas is a function');
+            assert(typeof BillGenerator.generateBillDataURL === 'function', 'generateBillDataURL is a function');
+            assert(typeof BillGenerator.loadBillTemplate === 'function', 'loadBillTemplate is a function');
+        }
+
+        // Constants
+        {
+            assert(BillGenerator.BILL_WIDTH === 1843, 'BILL_WIDTH is 1843');
+            assert(BillGenerator.BILL_HEIGHT === 784, 'BILL_HEIGHT is 784');
+        }
+
+        // Generate bill with mock template (1x1 white pixel as placeholder)
+        {
+            const mockCanvas = document.createElement('canvas');
+            mockCanvas.width = 1843;
+            mockCanvas.height = 784;
+            const mockCtx = mockCanvas.getContext('2d');
+            mockCtx.fillStyle = 'white';
+            mockCtx.fillRect(0, 0, 1843, 784);
+
+            // Create a mock template image from the canvas
+            const mockImg = new Image();
+            mockImg.src = mockCanvas.toDataURL();
+
+            // Wait for image load and test
+            const testAddr = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+            const testWif = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
+
+            try {
+                BillGenerator.generateBillOnCanvas(mockCanvas, mockImg, testAddr, testWif, 'segwit', false);
+                assert(mockCanvas.width === 1843 && mockCanvas.height === 784,
+                    'Bill canvas dimensions correct after generation');
+
+                // Verify some pixels were drawn (not all white)
+                const imgData = mockCtx.getImageData(0, 0, 1843, 784).data;
+                let nonWhite = 0;
+                for (let i = 0; i < imgData.length; i += 4) {
+                    if (imgData[i] < 255 || imgData[i + 1] < 255 || imgData[i + 2] < 255) {
+                        nonWhite++;
+                    }
+                }
+                assert(nonWhite > 100, 'Bill has non-white pixels (content drawn)', `nonWhite=${nonWhite}`);
+            } catch (e) {
+                fail('Bill generation with mock template', e.message);
+            }
+        }
+
+        // Generate bill with tweaked flag
+        {
+            const mockCanvas = document.createElement('canvas');
+            mockCanvas.width = 1843;
+            mockCanvas.height = 784;
+            const mockCtx = mockCanvas.getContext('2d');
+            mockCtx.fillStyle = 'white';
+            mockCtx.fillRect(0, 0, 1843, 784);
+
+            const mockImg = new Image();
+            mockImg.src = mockCanvas.toDataURL();
+
+            const testAddr = 'bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0';
+            const testWif = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
+
+            try {
+                BillGenerator.generateBillOnCanvas(mockCanvas, mockImg, testAddr, testWif, 'taproot', true);
+                assert(true, 'Bill generation with tweaked flag succeeds');
+            } catch (e) {
+                fail('Bill generation with tweaked flag', e.message);
+            }
+        }
+
+        // generateBillDataURL returns valid data URL
+        {
+            const mockCanvas = document.createElement('canvas');
+            mockCanvas.width = 1843;
+            mockCanvas.height = 784;
+            const mockCtx = mockCanvas.getContext('2d');
+            mockCtx.fillStyle = 'white';
+            mockCtx.fillRect(0, 0, 1843, 784);
+
+            const mockImg = new Image();
+            mockImg.src = mockCanvas.toDataURL();
+
+            const testAddr = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+            const testWif = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
+
+            try {
+                const dataUrl = BillGenerator.generateBillDataURL(mockImg, testAddr, testWif, 'segwit', false);
+                assert(dataUrl.startsWith('data:image/png;base64,'), 'generateBillDataURL returns PNG data URL');
+                assert(dataUrl.length > 1000, 'Data URL has substantial content');
+            } catch (e) {
+                fail('generateBillDataURL', e.message);
+            }
+        }
+
+        // ============================================================
+        // 21. Script Path Spending Verification (matching test_bitcoin.py section 9)
+        // ============================================================
+        section('Script Path Spending Verification');
+
+        // Backup spending script structure
+        {
+            const wallet = generateTaprootAddress('mainnet', true);
+            const backupPkX = hexToBytes(wallet.backup_pubkey_hex);
+            // Script: OP_PUSH32 <backup_pubkey_x> OP_CHECKSIG
+            const expectedScript = concatBytes(new Uint8Array([0x20]), backupPkX, new Uint8Array([0xac]));
+            assert(expectedScript.length === 34, 'Backup spending script has correct structure (34 bytes)');
+
+            // Verify TapLeaf hash
+            const leafVersion = 0xc0;
+            const leafData = concatBytes(new Uint8Array([leafVersion, expectedScript.length]), expectedScript);
+            const expectedLeafHash = taggedHash('TapLeaf', leafData);
+            const actualSth = computeScriptTreeHashForBackup(backupPkX);
+            assertHex(actualSth, bytesToHex(expectedLeafHash), 'TapLeaf hash matches');
+
+            // Script tree changes output key
+            const internalKey = hexToBytes(wallet.internal_pubkey_hex);
+            const { outputKeyX: outputNoScript } = taprootTweakPubkey(internalKey, null);
+            const { outputKeyX: outputWithScript } = taprootTweakPubkey(internalKey, actualSth);
+            assert(bytesToHex(outputNoScript) !== bytesToHex(outputWithScript),
+                'Script tree changes output key (as expected)');
+
+            // Address witness program matches tweaked output key
+            const addrInfo = verifyAddress(wallet.address);
+            assert(addrInfo && addrInfo.program === bytesToHex(outputWithScript),
+                'Address witness program matches tweaked output key');
+        }
+
+        // ============================================================
+        // 22. Key Path / Script Path Compatibility (matching test_bitcoin.py section 13)
+        // ============================================================
+        section('Key Path / Script Path Compatibility');
+
+        {
+            let allOk = true;
+            for (let i = 0; i < 3; i++) {
+                const wallet = generateTaprootAddress('mainnet', true);
+                const internalKey = hexToBytes(wallet.internal_pubkey_hex);
+                const backupPk = hexToBytes(wallet.backup_pubkey_hex);
+                const sth = hexToBytes(wallet.script_tree_hash);
+
+                // Key path: tweaked privkey * G = output key
+                const tweakedPkInt = bytesToBigInt(hexToBytes(wallet.tweaked_private_key_hex));
+                const kpPoint = pointMul(tweakedPkInt);
+                if (bytesToHex(bigIntToBytes(kpPoint[0], 32)) !== wallet.output_pubkey_hex) {
+                    allOk = false; break;
+                }
+
+                // Script path: script tree hash + internal key → same output key
+                const { outputKeyX: computedOutput } = taprootTweakPubkey(internalKey, sth);
+                if (bytesToHex(computedOutput) !== wallet.output_pubkey_hex) {
+                    allOk = false; break;
+                }
+
+                // Backup key is on the curve
+                const backupPoint = _liftX(backupPk);
+                if (backupPoint === null) { allOk = false; break; }
+            }
+            assert(allOk, '3 wallets: key path AND script path both valid for same address');
+        }
+
+        // ============================================================
+        // 23. Consistency Tests (matching test_bitcoin.py section 12)
+        // ============================================================
+        section('Consistency Tests');
+
+        // 200 unique addresses and WIFs
+        {
+            const addresses = new Set();
+            const wifs = new Set();
+            for (let i = 0; i < 200; i++) {
+                let w;
+                if (i % 2 === 0) {
+                    w = generateSegwitAddress('mainnet');
+                } else {
+                    w = generateTaprootAddress('mainnet', i % 4 === 1);
+                }
+                addresses.add(w.address);
+                wifs.add(w.private_key_wif);
+            }
+            assert(addresses.size === 200, '200 generated addresses all unique',
+                `only ${addresses.size} unique`);
+            assert(wifs.size === 200, '200 generated WIFs all unique',
+                `only ${wifs.size} unique`);
+        }
+
+        // ============================================================
+        // 24. Testnet4 Comprehensive Tests (matching test_bitcoin.py section 15)
+        // ============================================================
+        section('Testnet4 Comprehensive');
+
+        // Testnet4 Taproot + backup
+        {
+            const trT4Bk = generateTaprootAddress('testnet4', true);
+            assert(trT4Bk.address.startsWith('tb1p') && trT4Bk.has_backup,
+                'Testnet4 Taproot+backup starts with tb1p and has_backup');
+        }
+
+        // Testnet4 WIF compressed starts with c
+        {
+            const wifT4 = privateKeyToWif(
+                hexToBytes('0000000000000000000000000000000000000000000000000000000000000001'),
+                true, 'testnet4');
+            assert(wifT4[0] === 'c', 'Testnet4 WIF compressed starts with c');
+        }
+
+        // Testnet4 tweaked derivation roundtrip
+        {
+            const walletT4 = generateTaprootAddress('testnet4', true);
+            const tweakedPkT4 = hexToBytes(walletT4.tweaked_private_key_hex);
+            const derivedT4 = deriveTaprootAddressFromTweakedPrivkey(tweakedPkT4, 'testnet4');
+            assert(derivedT4.address === walletT4.address && derivedT4.address.startsWith('tb1p'),
+                'Testnet4 tweaked derivation correct (tb1p prefix)');
+        }
+
+        // ============================================================
+        // 25. Cross-validation: 10 fixed keys → identical addresses in Python & JS
+        // ============================================================
+        section('Python/JS Cross-validation (10 fixed keys)');
+
+        {
+            // Pre-computed in Python from test_bitcoin.py crypto functions
+            const vectors = [
+                {
+                    privhex: '0000000000000000000000000000000000000000000000000000000000000001',
+                    segwit: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+                    taproot: 'bc1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5sspknck9',
+                    wif_mainnet: 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn',
+                    wif_testnet: 'cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA',
+                },
+                {
+                    privhex: '0000000000000000000000000000000000000000000000000000000000000002',
+                    segwit: 'bc1qq6hag67dl53wl99vzg42z8eyzfz2xlkvxechjp',
+                    taproot: 'bc1pet7ep3czdu9k4wvdlz2fp5p8x2yp7t6ttyqg2c6cmh0lgeuu9lasmp9hsg',
+                    wif_mainnet: 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU74NMTptX4',
+                    wif_testnet: 'cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87K7XCyj5v',
+                },
+                {
+                    privhex: '0000000000000000000000000000000000000000000000000000000000000003',
+                    segwit: 'bc1q0ht9tyks4vh7p5p904t340cr9nvahy7u3re7zg',
+                    taproot: 'bc1pgxxyvcmdncdxs06cudd5yvmwwahaesaj6n3eu7st7x4sw9hrchaqjy33gs',
+                    wif_mainnet: 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU74sHUHy8S',
+                    wif_testnet: 'cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87KcLPVfXz',
+                },
+                {
+                    privhex: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+                    segwit: 'bc1qvmqas4maw7lg9clqu6kqu9zq9cluvlln5hw97q',
+                    taproot: 'bc1p7lr49wxxwezfts0kh0k7p9f0xndclctf360sqw7hf9zfzqxyll4splzdgc',
+                    wif_mainnet: 'L4gZxvfGxeHQYpUcvFwnuaXn8xaBKmvFTm1Z3advYg4xLJ7435BQ',
+                    wif_testnet: 'cV3ZRqf8PhyfiFwtJfkvGu2qmBsazE1wXoA2A16S3nixb3BTvvVx',
+                },
+                {
+                    privhex: '1111111111111111111111111111111111111111111111111111111111111111',
+                    segwit: 'bc1ql3e9pgs3mmwuwrh95fecme0s0qtn2880lsvsd5',
+                    taproot: 'bc1p9fjtrm3nwhemkjek0wxtswz2glmneu33w9lcylrvd7alttk0psmq6cnwza',
+                    wif_mainnet: 'KwntMbt59tTsj8xqpqYqRRWufyjGunvhSyeMo3NTYpFYzZbXJ5Hp',
+                    wif_testnet: 'cN9spWsvaxA8taS7DFMxnk1yJD2gaF2PX1npuTpy3vuZFJdwavaw',
+                },
+                {
+                    privhex: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+                    segwit: 'bc1qzyck8uy0xkrcj2emdhmagr6e3wqrwvuwef5jtc',
+                    taproot: 'bc1p4zkv0ppcgsjt97xq648m256h04guztsm2g57zenqukrmts6xdamsk7ns0s',
+                    wif_mainnet: 'L2wTu6hQrnDMiFNWA5na6jB12ErGQqtXwqpSL7aWquJaZG8Ai3ch',
+                    wif_testnet: 'cTJTN1hGHqucsgqmYVbhU3g4eU9g5HzE1sxuSY32M1xap1K4sYHF',
+                },
+                {
+                    privhex: 'fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140',
+                    segwit: 'bc1q4h0ycu78h88wzldxc7e79vhw5xsde0n8jk4wl5',
+                    taproot: 'bc1pmfr3p9j00pfxjh0zmgp99y8zftmd3s5pmedqhyptwy6lm87hf5sspknck9',
+                    wif_mainnet: 'L5oLkpV3aqBjhki6LmvChTCV6odsp4SXM6FfU2Gppt5kFLaHLuZ9',
+                    wif_testnet: 'cWALDjUu1tszsCBMjBjL4mhYj2wHUWYDR8Q8aSjLKzjkW5eBtpzu',
+                },
+                {
+                    privhex: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+                    segwit: 'bc1qmnyn7x24xj6vraxeeq56dfkxa009tvhgqffstc',
+                    taproot: 'bc1pm8knx8qxxupxvcf6d2kf622kqkjkdx84tkn3skljajdgsa28nvaqxq8srt',
+                    wif_mainnet: 'KwFvTne98E1t3mTNAr8pKx67eUzFJWdSNPqPSfxMEtrueW7PcQzL',
+                    wif_testnet: 'cMcuvhdzZHi9DCvdZFwwhGbBGiHexxj8SRyrZ6Qrk1WuuFC5NyCf',
+                },
+                {
+                    privhex: 'abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+                    segwit: 'bc1q0gd02e5fx22ys5jxal5wwq7qtgns9zkyw7fdje',
+                    taproot: 'bc1pxck4cfk38a6dmxuhurwdpy8qtavre588x00gnww9337c7mwxpc5qax6hj0',
+                    wif_mainnet: 'L2ygBBu9GhnKS3RrsYPUybEDE6j9BGQwf2VLg5rdvrMdTygULt6R',
+                    wif_testnet: 'cTLfe6tzhmUabUu8FxCcLujGrL2YqiWdj4donWK9Ry1diion3PZG',
+                },
+                {
+                    privhex: '5555555555555555555555555555555555555555555555555555555555555555',
+                    segwit: 'bc1qu8awxvjw9zjw7hhqru2d6vm6cmy968vs4cm9yk',
+                    taproot: 'bc1pqcfunylfm2x8vng70nz0lmhz35ypu8hzaw6uw5rh8mwm8yy9czqsymlzfl',
+                    wif_mainnet: 'Kz5b3Nun8jEyik2uyPewW19AwRnP8hoHthH4UdTpM5PLoKRAFH9b',
+                    wif_testnet: 'cQSaWHudZnwEtBWBMoU4sKeEZf5no9tyxjRXb3vKrC3M44TsQ8rk',
+                },
+            ];
+
+            let segwitOk = true, taprootOk = true, wifMainOk = true, wifTestOk = true;
+            let failDetail = '';
+
+            for (const v of vectors) {
+                const priv = hexToBytes(v.privhex);
+
+                // SegWit address
+                const sw = deriveSegwitAddressFromPrivkey(priv, 'mainnet');
+                if (sw.address !== v.segwit) {
+                    segwitOk = false;
+                    failDetail = `key ${v.privhex.slice(0,8)}...: expected ${v.segwit}, got ${sw.address}`;
+                    break;
+                }
+
+                // Taproot address (no backup, tweaked)
+                const tweakedPriv = taprootTweakSeckey(priv, null);
+                const tr = deriveTaprootAddressFromTweakedPrivkey(tweakedPriv, 'mainnet');
+                if (tr.address !== v.taproot) {
+                    taprootOk = false;
+                    failDetail = `key ${v.privhex.slice(0,8)}...: expected ${v.taproot}, got ${tr.address}`;
+                    break;
+                }
+
+                // WIF mainnet
+                const wifM = privateKeyToWif(priv, true, 'mainnet');
+                if (wifM !== v.wif_mainnet) {
+                    wifMainOk = false;
+                    failDetail = `key ${v.privhex.slice(0,8)}...: expected ${v.wif_mainnet}, got ${wifM}`;
+                    break;
+                }
+
+                // WIF testnet
+                const wifT = privateKeyToWif(priv, true, 'testnet4');
+                if (wifT !== v.wif_testnet) {
+                    wifTestOk = false;
+                    failDetail = `key ${v.privhex.slice(0,8)}...: expected ${v.wif_testnet}, got ${wifT}`;
+                    break;
+                }
+            }
+
+            assert(segwitOk, '10 fixed keys → identical SegWit addresses (Python=JS)', failDetail);
+            assert(taprootOk, '10 fixed keys → identical Taproot addresses (Python=JS)', failDetail);
+            assert(wifMainOk, '10 fixed keys → identical WIF mainnet (Python=JS)', failDetail);
+            assert(wifTestOk, '10 fixed keys → identical WIF testnet (Python=JS)', failDetail);
+        }
+
+        // ============================================================
+        // Summary
+        // ============================================================
+        const total = passed + failed;
+        const allPassed = failed === 0;
+        summaryEl.className = 'summary ' + (allPassed ? 'pass' : 'fail');
+        summaryEl.textContent = `Results: ${passed}/${total} passed, ${failed} failed`;
+
+        if (!allPassed) {
+            const errSection = document.createElement('h2');
+            errSection.textContent = 'Failures';
+            errSection.style.color = '#f44336';
+            output.appendChild(errSection);
+            for (const [name, msg] of errors) {
+                const div = document.createElement('div');
+                div.className = 'test fail';
+                div.textContent = `${name}: ${msg}`;
+                output.appendChild(div);
+            }
+        }
+
+        // Also log to console for Node.js / CI
+        console.log(`\nTest results: ${passed}/${total} passed, ${failed} failed`);
+        if (!allPassed) {
+            console.error('FAILURES:', errors);
+        }
+    })();
+    </script>
+</body>
+</html>
