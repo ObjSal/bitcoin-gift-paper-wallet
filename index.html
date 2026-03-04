@@ -405,19 +405,19 @@
             <h2>Address Type</h2>
 
             <div class="options-grid">
-                <div class="option-card" id="optSegwit" onclick="selectType('segwit')">
+                <div class="option-card selected" id="optSegwit" onclick="selectType('segwit')">
                     <span class="badge badge-segwit">SegWit</span>
                     <h3>Native SegWit (P2WPKH)</h3>
                     <p>Standard bc1q... address. Widely supported, lower fees than legacy.</p>
                 </div>
-                <div class="option-card selected" id="optTaproot" onclick="selectType('taproot')">
+                <div class="option-card" id="optTaproot" onclick="selectType('taproot')">
                     <span class="badge badge-taproot">Taproot</span>
                     <h3>Taproot (P2TR)</h3>
                     <p>Modern bc1p... address. Enhanced privacy and smart contract capabilities.</p>
                 </div>
             </div>
 
-            <div class="backup-option visible" id="backupOption">
+            <div class="backup-option" id="backupOption">
                 <label>
                     <input type="checkbox" id="backupCheckbox">
                     <div>
@@ -495,7 +495,7 @@
     <script src="js/qr_generator.js"></script>
     <script src="js/bill_generator.js"></script>
     <script>
-        let currentType = 'taproot';
+        let currentType = 'segwit';
         let currentWallet = null;
         let billTemplateImg = null;
         let serverMode = false;
