@@ -34,8 +34,9 @@ from urllib.error import URLError
 # Configuration
 # ============================================================
 
-SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "test-screenshots")
+_TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_TEST_DIR)
+SCREENSHOT_DIR = os.path.join(_PROJECT_ROOT, "test-screenshots")
 SERVER_READY_TIMEOUT = 90   # seconds (bitcoind mines 101 blocks at startup)
 ACTION_TIMEOUT = 30_000     # ms — for button clicks that trigger API calls
 STEP_TIMEOUT = 15_000       # ms — for card transitions
@@ -58,10 +59,9 @@ def start_server(port):
     Uses os.setsid() to create a new process group so that both the server
     and its child bitcoind can be cleaned up together on shutdown.
     """
-    server_dir = os.path.dirname(os.path.abspath(__file__))
     proc = subprocess.Popen(
-        [sys.executable, "server.py", str(port), "--regtest"],
-        cwd=server_dir,
+        [sys.executable, os.path.join(_PROJECT_ROOT, "server", "server.py"), str(port), "--regtest"],
+        cwd=_PROJECT_ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         start_new_session=True,  # creates new process group (pgid = proc.pid)

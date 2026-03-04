@@ -21,8 +21,8 @@ if [ $missing -eq 1 ]; then
 fi
 
 # Check template image
-if [ ! -f "bill_template.png" ]; then
-    echo "ERROR: bill_template.png not found in $(pwd)"
+if [ ! -f "assets/bill_template.png" ]; then
+    echo "ERROR: assets/bill_template.png not found in $(pwd)"
     echo "Make sure to run this from the bitcoin-gift-wallet directory."
     exit 1
 fi
@@ -52,4 +52,4 @@ else
     echo "Starting Bitcoin Gift Wallet on http://localhost:$PORT"
 fi
 
-python3 server.py "$PORT" $REGTEST
+python3 server/server.py "$PORT" $REGTEST

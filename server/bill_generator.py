@@ -10,9 +10,10 @@ from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
 from qr_generator import generate_qr_image, EC_M, EC_Q
 
-# Template bill image path (resolve relative to this file's directory)
+# Template bill image path (resolve relative to project root)
 _DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_PATH = os.path.join(_DIR, "bill_template.png")
+_PROJECT_ROOT = os.path.dirname(_DIR)
+TEMPLATE_PATH = os.path.join(_PROJECT_ROOT, "assets", "bill_template.png")
 
 # ============================================================
 # Overlay positions (measured from pixel-level scan of the template)

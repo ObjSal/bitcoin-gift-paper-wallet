@@ -26,8 +26,10 @@ import tempfile
 import traceback
 import subprocess
 
-# Add project directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add server directory to path for bitcoin_crypto imports
+_TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_TEST_DIR)
+sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'server'))
 
 from bitcoin_crypto import (
     generate_segwit_address,

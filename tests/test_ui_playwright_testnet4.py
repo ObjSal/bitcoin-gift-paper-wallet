@@ -43,14 +43,14 @@ import json
 # Configuration
 # ============================================================
 
-SCREENSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "test-screenshots")
+_TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_TEST_DIR)
+SCREENSHOT_DIR = os.path.join(_PROJECT_ROOT, "test-screenshots")
 SERVER_READY_TIMEOUT = 30    # seconds (no bitcoind startup, just HTTP server)
 ACTION_TIMEOUT = 30_000      # ms — for button clicks that trigger API calls
 STEP_TIMEOUT = 15_000        # ms — for card transitions
 MEMPOOL_PROPAGATION_WAIT = 10  # seconds to wait for mempool propagation
-RECOVERY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             "test-screenshots", "testnet4_recovery.json")
+RECOVERY_FILE = os.path.join(_PROJECT_ROOT, "test-screenshots", "testnet4_recovery.json")
 
 
 # ============================================================
@@ -85,10 +85,9 @@ def find_free_port():
 
 def start_server(port):
     """Start server.py (standard mode, no --regtest) as a subprocess."""
-    server_dir = os.path.dirname(os.path.abspath(__file__))
     proc = subprocess.Popen(
-        [sys.executable, "server.py", str(port)],
-        cwd=server_dir,
+        [sys.executable, os.path.join(_PROJECT_ROOT, "server", "server.py"), str(port)],
+        cwd=_PROJECT_ROOT,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
