@@ -318,7 +318,7 @@ function generateBillDataURL(templateImg, address, privateKeyWif, addressType, i
  * @returns {Promise<HTMLImageElement>} Loaded image element
  */
 function loadBillTemplate(templatePath) {
-    if (templatePath === undefined) templatePath = 'bill_template.png';
+    if (templatePath === undefined) templatePath = 'assets/bill_template.png';
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => resolve(img);

@@ -59,10 +59,10 @@ That's it. All crypto, QR generation, and bill rendering happen client-side in J
 pip install -r requirements.txt
 
 # Start in standard mode (mainnet/testnet4 via mempool.space)
-python3 server.py 8080
+python3 server/server.py 8080
 
 # Or start in regtest mode (requires Bitcoin Core: brew install bitcoin)
-python3 server.py 8080 --regtest
+python3 server/server.py 8080 --regtest
 ```
 
 Regtest mode starts a local `bitcoind`, creates a wallet, mines 101 blocks, and enables the faucet page. Transactions confirm instantly (1 block mined after each broadcast).
@@ -87,7 +87,7 @@ Every cryptographic operation runs in your browser:
 - **Signing**: ECDSA with RFC 6979 deterministic nonces (SegWit), Schnorr with BIP340 nonce derivation (Taproot)
 - **Transaction construction**: Full SegWit v0 and Taproot v1 transaction building, sighash computation (BIP143/BIP341)
 
-The Python implementations (`bitcoin_crypto.py`, `qr_generator.py`) serve as reference code and are cross-validated against the JavaScript with 10 fixed test vectors.
+The Python implementations (`server/bitcoin_crypto.py`, `server/qr_generator.py`) serve as reference code and are cross-validated against the JavaScript with 10 fixed test vectors.
 
 ### Address Types
 
@@ -117,30 +117,30 @@ The project has comprehensive test coverage across JavaScript, Python, and end-t
 
 ```bash
 # JavaScript crypto tests (120 tests, runs in browser)
-open test_bitcoin_crypto.html
+open tests/test_bitcoin_crypto.html
 
 # Python crypto unit tests (54 tests)
-python3 test_bitcoin.py
+python3 tests/test_bitcoin.py
 
 # Regtest on-chain spending tests (9 tests, requires Bitcoin Core)
-python3 test_regtest_spending.py
+python3 tests/test_regtest_spending.py
 
 # End-to-end API tests (8 tests, requires Bitcoin Core)
-python3 test_e2e_api.py
+python3 tests/test_e2e_api.py
 
 # Playwright browser UI test (requires Bitcoin Core + Playwright)
 pip install playwright && playwright install chromium
-python3 test_ui_playwright.py
+python3 tests/test_ui_playwright.py
 
 # Testnet4 browser UI test (requires pre-funded testnet4 address)
-python3 test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1q..."
+python3 tests/test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1q..."
 ```
 
 **Current state: 120/120 JS + 54/54 Python + 9/9 regtest + 8/8 E2E + 1/1 Playwright = all tests passing.**
 
 ## Security
 
-A full security assessment is available in [`security_assessment.md`](security_assessment.md). Key highlights:
+A full security assessment is available in [`docs/security_assessment.md`](docs/security_assessment.md). Key highlights:
 
 **Strengths:**
 - Zero external dependencies eliminates supply chain risk
@@ -159,26 +159,32 @@ A full security assessment is available in [`security_assessment.md`](security_a
 ## Project Structure
 
 ```
-index.html                  # Generator page
-sweep.html                  # Recipient sweep page
-recover.html                # Backup recovery page
-faucet.html                 # Regtest faucet page
-donate.html                 # Donation page
-bitcoin_crypto.js           # Pure JS Bitcoin cryptography (zero dependencies)
-qr_generator.js             # Pure JS QR code generation
-bill_generator.js           # HTML5 Canvas bill rendering
-bill_template.png           # Bill background image (1843x784)
-bitcoin_crypto.py           # Python reference implementation
-qr_generator.py             # Python QR code generation
-bill_generator.py           # Python Pillow bill generation
-server.py                   # HTTP server (regtest mode only)
-test_bitcoin_crypto.html    # In-browser JS test suite (120 tests)
-test_bitcoin.py             # Python unit tests (54 tests)
-test_regtest_spending.py    # On-chain spending tests (9 tests)
-test_e2e_api.py             # End-to-end API tests (8 tests)
-test_ui_playwright.py       # Playwright browser UI test
-test_ui_playwright_testnet4.py  # Testnet4 Playwright test
-security_assessment.md      # Full security assessment
+index.html                          # Generator page
+sweep.html                          # Recipient sweep page
+recover.html                        # Backup recovery page
+faucet.html                         # Regtest faucet page
+donate.html                         # Donation page
+js/
+    bitcoin_crypto.js               # Pure JS Bitcoin cryptography (zero dependencies)
+    qr_generator.js                 # Pure JS QR code generation
+    bill_generator.js               # HTML5 Canvas bill rendering
+assets/
+    bill_template.png               # Bill background image (1843x784)
+    donate_qr.png                   # Donation QR code
+server/
+    server.py                       # HTTP server (regtest mode only)
+    bitcoin_crypto.py               # Python reference implementation
+    qr_generator.py                 # Python QR code generation
+    bill_generator.py               # Python Pillow bill generation
+tests/
+    test_bitcoin_crypto.html        # In-browser JS test suite (120 tests)
+    test_bitcoin.py                 # Python unit tests (54 tests)
+    test_regtest_spending.py        # On-chain spending tests (9 tests)
+    test_e2e_api.py                 # End-to-end API tests (8 tests)
+    test_ui_playwright.py           # Playwright browser UI test
+    test_ui_playwright_testnet4.py  # Testnet4 Playwright test
+docs/
+    security_assessment.md          # Full security assessment
 ```
 
 ## Support This Project
@@ -187,7 +193,7 @@ Building and maintaining zero-dependency Bitcoin tools takes time, caffeine, and
 
 <div align="center">
 
-<img src="donate_qr.png" alt="Donate Bitcoin" width="200">
+<img src="assets/donate_qr.png" alt="Donate Bitcoin" width="200">
 
 **`bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8`**
 

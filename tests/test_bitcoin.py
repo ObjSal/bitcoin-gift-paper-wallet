@@ -11,10 +11,14 @@ Tests cover:
 8. Edge cases and security checks
 """
 
+import os
 import sys
 import hashlib
 import secrets
 from collections import Counter
+
+# Add server directory to path for bitcoin_crypto imports
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'server'))
 
 from bitcoin_crypto import (
     generate_private_key,

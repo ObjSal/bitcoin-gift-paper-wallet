@@ -43,6 +43,7 @@ from bill_generator import generate_bill_image, bill_to_base64, bill_to_png_byte
 
 # Resolve file paths relative to this script's directory
 _DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_DIR)
 
 # Global regtest node — set when running with --regtest
 _regtest_node = None
@@ -344,6 +345,9 @@ def _explorer_url(txid, network):
 class WalletHandler(SimpleHTTPRequestHandler):
     """HTTP request handler for the wallet generator."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=_PROJECT_ROOT, **kwargs)
+
     def do_GET(self):
         parsed = urlparse(self.path)
 
@@ -412,7 +416,7 @@ class WalletHandler(SimpleHTTPRequestHandler):
             return None
 
     def _serve_file(self, filename, content_type):
-        filepath = os.path.join(_DIR, filename)
+        filepath = os.path.join(_PROJECT_ROOT, filename)
         try:
             with open(filepath, "rb") as f:
                 content = f.read()

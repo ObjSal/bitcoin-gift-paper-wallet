@@ -4,13 +4,13 @@
     {
       "name": "bitcoin-gift-wallet",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["server.py", "8080"],
+      "runtimeArgs": ["-m", "http.server", "8080"],
       "port": 8080
     },
     {
       "name": "bitcoin-gift-wallet-regtest",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["server.py", "8080", "--regtest"],
+      "runtimeArgs": ["server/server.py", "8080", "--regtest"],
       "port": 8080
     }
   ]

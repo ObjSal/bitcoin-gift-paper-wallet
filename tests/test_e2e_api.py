@@ -30,8 +30,11 @@ import traceback
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
-# Add project directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add server and tests directories to path
+_TEST_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_TEST_DIR)
+sys.path.insert(0, os.path.join(_PROJECT_ROOT, 'server'))
+sys.path.insert(0, _TEST_DIR)
 
 from test_regtest_spending import RegtestNode, TestResult
 import server as server_module

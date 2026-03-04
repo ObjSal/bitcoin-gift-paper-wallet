@@ -13,37 +13,63 @@ GitHub Pages (static):     All JS crypto → mempool.space API → no regtest
 Local Python server:       All JS crypto → regtest via server API (bitcoin-cli bridge)
 ```
 
+### Directory Structure
+
+```
+bitcoin-gift-wallet/
+├── index.html, sweep.html, recover.html, donate.html, faucet.html  (root)
+├── js/                          (JavaScript modules)
+│   ├── bitcoin_crypto.js, qr_generator.js, bill_generator.js
+├── assets/                      (images)
+│   ├── bill_template.png, donate_qr.png
+├── server/                      (Python backend)
+│   ├── server.py, bitcoin_crypto.py, qr_generator.py, bill_generator.py
+├── tests/                       (all test files)
+│   ├── test_bitcoin_crypto.html, test_bitcoin.py, test_regtest_spending.py,
+│   ├── test_e2e_api.py, test_ui_playwright.py, test_ui_playwright_testnet4.py,
+│   ├── test_ui_chained.md, test_ui_chained_testnet4.md
+├── docs/                        (documentation)
+│   └── security_assessment.md
+├── README.md, CLAUDE.md, .gitignore, requirements.txt, run.sh
+```
+
 ### JavaScript Modules (client-side, zero dependencies)
 
-- **`bitcoin_crypto.js`** (~2,200 lines) — Full port of `bitcoin_crypto.py` to JavaScript. Pure JS secp256k1 (BigInt arithmetic), SHA-256, RIPEMD-160, HMAC-SHA256, bech32/bech32m encoding (BIP173/BIP350), Base58/WIF, SegWit P2WPKH and Taproot P2TR address generation, ECDSA signing (RFC 6979), Schnorr signing (BIP340), sighash computation, and transaction construction (SegWit v0, Taproot key path, Taproot script path, multi-input sweep variants). Exports via `window.BitcoinCrypto`.
-- **`qr_generator.js`** (~600 lines) — Full port of `qr_generator.py`. GF(256) arithmetic, Reed-Solomon encoding, QR versions 1-10, alphanumeric + byte modes, 8-mask evaluation. Exports via `window.QRGenerator`.
-- **`bill_generator.js`** (~250 lines) — HTML5 Canvas-based bill generation (replaces Python Pillow). Loads `bill_template.png`, overlays QR codes, address text, private key text, banner, timestamp, and "(tweaked)" labels. Uses `ctx.measureText()` for font fitting. Exports via `window.BillGenerator`.
-- **`test_bitcoin_crypto.html`** (~1,050 lines) — In-browser JS test suite with 120 tests covering all crypto primitives, address generation, signing, transaction construction, QR codes, bill generation, and cross-validation with Python (10 fixed keys produce identical results).
+- **`js/bitcoin_crypto.js`** (~2,200 lines) — Full port of `server/bitcoin_crypto.py` to JavaScript. Pure JS secp256k1 (BigInt arithmetic), SHA-256, RIPEMD-160, HMAC-SHA256, bech32/bech32m encoding (BIP173/BIP350), Base58/WIF, SegWit P2WPKH and Taproot P2TR address generation, ECDSA signing (RFC 6979), Schnorr signing (BIP340), sighash computation, and transaction construction (SegWit v0, Taproot key path, Taproot script path, multi-input sweep variants). Exports via `window.BitcoinCrypto`.
+- **`js/qr_generator.js`** (~600 lines) — Full port of `server/qr_generator.py`. GF(256) arithmetic, Reed-Solomon encoding, QR versions 1-10, alphanumeric + byte modes, 8-mask evaluation. Exports via `window.QRGenerator`.
+- **`js/bill_generator.js`** (~250 lines) — HTML5 Canvas-based bill generation (replaces Python Pillow). Loads `assets/bill_template.png`, overlays QR codes, address text, private key text, banner, timestamp, and "(tweaked)" labels. Uses `ctx.measureText()` for font fitting. Exports via `window.BillGenerator`.
+- **`tests/test_bitcoin_crypto.html`** (~1,050 lines) — In-browser JS test suite with 120 tests covering all crypto primitives, address generation, signing, transaction construction, QR codes, bill generation, and cross-validation with Python (10 fixed keys produce identical results).
 
 ### Python Backend (server mode only)
 
-- **`bitcoin_crypto.py`** — Core cryptography module (Python reference implementation). Pure Python secp256k1, bech32/bech32m encoding (BIP173/BIP350), SegWit P2WPKH and Taproot P2TR address generation, WIF encoding/decoding, ECDSA signing (RFC 6979), Schnorr signing (BIP340), and transaction construction.
-- **`qr_generator.py`** — Pure Python QR code generation (reference implementation).
-- **`bill_generator.py`** — Python Pillow-based bill generation (reference implementation). Uses Liberation Sans Narrow font for Taproot addresses.
-- **`server.py`** — HTTP server with API endpoints for regtest operations (bitcoin-cli bridge), UTXO lookup, broadcast, and health check. The server is **not required** for mainnet/testnet4 — those modes work entirely client-side.
+- **`server/bitcoin_crypto.py`** — Core cryptography module (Python reference implementation). Pure Python secp256k1, bech32/bech32m encoding (BIP173/BIP350), SegWit P2WPKH and Taproot P2TR address generation, WIF encoding/decoding, ECDSA signing (RFC 6979), Schnorr signing (BIP340), and transaction construction.
+- **`server/qr_generator.py`** — Pure Python QR code generation (reference implementation).
+- **`server/bill_generator.py`** — Python Pillow-based bill generation (reference implementation). Uses Liberation Sans Narrow font for Taproot addresses.
+- **`server/server.py`** — HTTP server with API endpoints for regtest operations (bitcoin-cli bridge), UTXO lookup, broadcast, and health check. The server is **not required** for mainnet/testnet4 — those modes work entirely client-side.
 
 ### HTML Pages (dual-mode)
 
 - **`index.html`** — Generator frontend. All wallet generation and bill rendering happens client-side via JS. Server only needed for regtest network option.
 - **`sweep.html`** — Recipient sweep page. 3-step flow: enter WIF → verify address & check balance → sweep to destination. All signing happens in the browser. UTXOs fetched from mempool.space (mainnet/testnet4) or server API (regtest).
 - **`recover.html`** — Backup recovery page. Script-path spend using backup key + internal pubkey. Same dual-mode UTXO/broadcast as sweep.
+- **`donate.html`** — Donation page.
 - **`faucet.html`** — Regtest faucet page. Shows "Server Required" message when no server detected.
-- **`bill_template.png`** — The bill background image (1843×784 pixels).
+- **`assets/bill_template.png`** — The bill background image (1843×784 pixels).
+- **`assets/donate_qr.png`** — QR code for the donation page.
 
 ### Test Files
 
-- **`test_bitcoin.py`** — Python crypto unit tests (54 tests).
-- **`test_regtest_spending.py`** — On-chain spending tests (9 tests, requires Bitcoin Core).
-- **`test_e2e_api.py`** — End-to-end API tests (8 tests, requires Bitcoin Core).
-- **`test_ui_playwright.py`** — Playwright browser UI test (regtest, headless CI/CD).
-- **`test_ui_playwright_testnet4.py`** — Playwright browser UI test for testnet4.
-- **`test_ui_chained.md`** — Claude Code prompt file for interactive UI testing.
-- **`test_ui_chained_testnet4.md`** — Claude Code prompt file for interactive testnet4 UI testing.
+- **`tests/test_bitcoin.py`** — Python crypto unit tests (54 tests).
+- **`tests/test_regtest_spending.py`** — On-chain spending tests (9 tests, requires Bitcoin Core).
+- **`tests/test_e2e_api.py`** — End-to-end API tests (8 tests, requires Bitcoin Core).
+- **`tests/test_ui_playwright.py`** — Playwright browser UI test (regtest, headless CI/CD).
+- **`tests/test_ui_playwright_testnet4.py`** — Playwright browser UI test for testnet4.
+- **`tests/test_ui_chained.md`** — Claude Code prompt file for interactive UI testing.
+- **`tests/test_ui_chained_testnet4.md`** — Claude Code prompt file for interactive testnet4 UI testing.
+
+### Documentation
+
+- **`docs/security_assessment.md`** — Security assessment of the cryptographic implementation.
 
 ## Running
 
@@ -63,14 +89,14 @@ In static mode, all cryptography runs client-side in JavaScript. The site works 
 pip install -r requirements.txt  # Pillow + Playwright
 playwright install chromium      # Download browser binary (for UI tests)
 ./run.sh                          # Starts on http://localhost:8080
-# or: python3 server.py 8080
+# or: python3 server/server.py 8080
 ```
 
 ### Regtest mode (local Bitcoin Core testing)
 
 ```bash
 ./run.sh --regtest                # Starts bitcoind + server on http://localhost:8080
-# or: python3 server.py 8080 --regtest
+# or: python3 server/server.py 8080 --regtest
 ```
 
 Regtest mode starts a managed `bitcoind` process, creates a wallet, mines 101 blocks for maturity, and enables the faucet page. Transactions broadcast on regtest are auto-confirmed (1 block mined after each broadcast). Requires Bitcoin Core (`brew install bitcoin`).
@@ -94,11 +120,11 @@ fetch('/api/health', { signal: AbortSignal.timeout(2000) })
 
 ### Claude Code Preview
 
-The project includes `.claude/launch.json` with two server configurations for Claude Code's preview feature:
-- **`bitcoin-gift-wallet`** — Standard mode (mainnet/testnet4 via mempool.space)
-- **`bitcoin-gift-wallet-regtest`** — Regtest mode (local bitcoind)
+The project includes `.claude/launch.json` with two configurations for Claude Code's preview feature:
+- **`bitcoin-gift-wallet`** — Static file server (`python3 -m http.server`), same as GitHub Pages. Mainnet and testnet4 only. All crypto runs client-side, UTXOs/broadcast via mempool.space.
+- **`bitcoin-gift-wallet-regtest`** — Python server with local bitcoind. Regtest mode with faucet and auto-mining.
 
-Use `preview_start` with either name to launch the server with live preview.
+Use `preview_start` with either name to launch with live preview.
 
 ### Pages
 
@@ -106,7 +132,7 @@ Use `preview_start` with either name to launch the server with live preview.
 - Sweep: `http://localhost:8080/sweep.html`
 - Recover: `http://localhost:8080/recover.html`
 - Faucet (regtest only): `http://localhost:8080/faucet.html`
-- JS Test Suite: `http://localhost:8080/test_bitcoin_crypto.html`
+- JS Test Suite: `http://localhost:8080/tests/test_bitcoin_crypto.html`
 
 ## Bill Private Key Strategy
 
@@ -144,21 +170,21 @@ The private key printed on the bill depends on the address type:
 ### JavaScript crypto tests (120 tests, runs in browser)
 ```bash
 # Open in any browser:
-open test_bitcoin_crypto.html
+open tests/test_bitcoin_crypto.html
 # Or via HTTP server:
-python3 -m http.server 8080  # then visit http://localhost:8080/test_bitcoin_crypto.html
+python3 -m http.server 8080  # then visit http://localhost:8080/tests/test_bitcoin_crypto.html
 ```
 120 tests covering: byte helpers, SHA-256, RIPEMD-160, HMAC-SHA256, hash160, tagged hash, secp256k1 point arithmetic, bech32/bech32m, Base58/WIF, SegWit address generation, Taproot address generation, Taproot backup keys, tweaked address derivation, edge cases, ECDSA signing, Schnorr signing (BIP340), transaction construction (SegWit, Taproot key path, Taproot script path, multi-input), QR code generation (with Python cross-validation), bill generation, script path verification, key/script path compatibility, consistency (200 unique addresses), testnet4 comprehensive, and **cross-validation with Python** (10 fixed private keys produce identical SegWit addresses, Taproot addresses, and WIF encodings in both Python and JS).
 
 ### Python crypto unit tests (54 tests, no dependencies beyond the project)
 ```bash
-python3 test_bitcoin.py
+python3 tests/test_bitcoin.py
 ```
 These verify address generation (mainnet, regtest, testnet4), key derivation, bech32/bech32m encoding, taproot tweaking, WIF encoding/decoding roundtrips (all 3 networks), tweaked key address derivation, Schnorr signatures (including BIP340 test vectors), and ECDSA signatures.
 
 ### Regtest spending tests (requires Bitcoin Core: `brew install bitcoin`)
 ```bash
-python3 test_regtest_spending.py
+python3 tests/test_regtest_spending.py
 ```
 9 tests that prove generated addresses are actually spendable on-chain:
 1. SegWit P2WPKH spending
@@ -175,27 +201,27 @@ Each test: generates an address → funds it on regtest → constructs + signs a
 
 ### E2E API tests (requires Bitcoin Core)
 ```bash
-python3 test_e2e_api.py
+python3 tests/test_e2e_api.py
 ```
 8 tests that exercise the full HTTP API workflow on regtest: generate wallet → fund via faucet → sweep or recover via API → verify on-chain. Covers SegWit sweep, Taproot sweep (no backup), Taproot sweep (with backup/tweaked), Taproot recovery (script-path), multi-UTXO sweep, repeated multi-UTXO sweep (all 3 address types × 2 rounds of fund-then-sweep), repeated multi-UTXO recovery (script-path × 2 rounds of fund-then-recover), and a chained test (faucet → sweep → recovery across 3 Taproot+backup addresses).
 
 ### Playwright UI tests (requires Bitcoin Core + Playwright)
 ```bash
 pip install playwright && playwright install chromium
-python3 test_ui_playwright.py              # headless (CI/CD)
-python3 test_ui_playwright.py --headed     # visible browser (debugging)
+python3 tests/test_ui_playwright.py              # headless (CI/CD)
+python3 tests/test_ui_playwright.py --headed     # visible browser (debugging)
 ```
 Browser-driven UI test that exercises the full chained flow through actual web pages: Generator → Faucet → Sweep → Recovery. Starts its own regtest server subprocess, launches headless Chromium, drives the UI with real clicks and form fills, and verifies transaction confirmations and fee chain math. Screenshots saved to `test-screenshots/` at each checkpoint.
 
 ### Testnet4 Playwright UI test (requires Playwright + pre-funded testnet4 address)
 ```bash
-python3 test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1q..."
-python3 test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1p..." --headed
+python3 tests/test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1q..."
+python3 tests/test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1p..." --headed
 
 # Or via environment variables (set in .claude/settings.local.json):
 export TESTNET4_WIF="cXXX..."
 export TESTNET4_ADDRESS="tb1q..."
-python3 test_ui_playwright_testnet4.py
+python3 tests/test_ui_playwright_testnet4.py
 ```
 Testnet4 browser-driven test: sweeps a pre-funded testnet4 address to a freshly generated address, then immediately returns funds (spending the unconfirmed output) back to the original address. No confirmation waits — completes as soon as transactions are accepted by the mempool, with explorer links printed for traceability. Supports both SegWit (`tb1q...`) and Taproot (`tb1p...`) funded addresses — the address type is auto-detected from the prefix. Funds go back to the original address so the test wallet isn't drained. CI/CD-ready via pipeline secrets (`--wif` / `--address` CLI args) or `TESTNET4_WIF` / `TESTNET4_ADDRESS` env vars.
 
@@ -230,7 +256,7 @@ Three issues were encountered running the regtest tests on macOS:
 
 ### How Private Keys Are Generated
 
-`generatePrivateKey()` in `bitcoin_crypto.js` (and `generate_private_key()` in `bitcoin_crypto.py`) obtains 256 bits of entropy via CSPRNG, then uses **rejection sampling** — looping until the random integer falls in the valid secp256k1 range `[1, N-1]`. The probability of rejection is ~3.7 × 10⁻³⁹ per attempt, so in practice the loop always exits on the first iteration.
+`generatePrivateKey()` in `js/bitcoin_crypto.js` (and `generate_private_key()` in `server/bitcoin_crypto.py`) obtains 256 bits of entropy via CSPRNG, then uses **rejection sampling** — looping until the random integer falls in the valid secp256k1 range `[1, N-1]`. The probability of rejection is ~3.7 × 10⁻³⁹ per attempt, so in practice the loop always exits on the first iteration.
 
 - **JavaScript**: `crypto.getRandomValues(new Uint8Array(32))` — Web Crypto API, backed by the same OS CSPRNG
 - **Python**: `secrets.token_bytes(32)` — backed by `os.urandom()` → OS kernel CSPRNG
@@ -277,7 +303,7 @@ Three networks are supported, each with distinct address prefixes:
 
 **Note:** Testnet4 and regtest share WIF prefix `0xef`, so the network must be specified by the user (WIF alone cannot distinguish them).
 
-Both `bitcoin_crypto.py` and `bitcoin_crypto.js` functions use a `network` parameter: `"mainnet"`, `"testnet4"`, or `"regtest"`. The `_networkHrp()` / `_network_hrp()` helper maps these to bech32 HRPs: `"bc"`, `"tb"`, `"bcrt"`.
+Both `server/bitcoin_crypto.py` and `js/bitcoin_crypto.js` functions use a `network` parameter: `"mainnet"`, `"testnet4"`, or `"regtest"`. The `_networkHrp()` / `_network_hrp()` helper maps these to bech32 HRPs: `"bc"`, `"tb"`, `"bcrt"`.
 
 - The test RPC port is 18443 with rpcuser=test, rpcpassword=test.
 
@@ -285,7 +311,7 @@ Both `bitcoin_crypto.py` and `bitcoin_crypto.js` functions use a `network` param
 
 When started with `--regtest`, the server manages a full `bitcoind` lifecycle:
 
-1. **`RegtestNode` class** (in `server.py`) — Creates a temp datadir, writes `bitcoin.conf`, starts `bitcoind`, creates a wallet, mines 101 blocks for coinbase maturity.
+1. **`RegtestNode` class** (in `server/server.py`) — Creates a temp datadir, writes `bitcoin.conf`, starts `bitcoind`, creates a wallet, mines 101 blocks for coinbase maturity.
 2. **Auto-mine** — `_broadcast_regtest()` automatically mines 1 block after broadcasting, so transactions confirm immediately. Sweep/recover pages show "Transaction Confirmed" instead of "Transaction Broadcast" on regtest.
 3. **Faucet** — `POST /api/faucet` calls `sendtoaddress` + mines 1 block. The faucet page maintains an in-session history of funded addresses.
 4. **Cleanup** — `RegtestNode.stop()` shuts down `bitcoind` and removes the temp datadir on server exit.
@@ -300,4 +326,4 @@ When started with `--regtest`, the server manages a full `bitcoind` lifecycle:
 - Sweep and recover pages use dual-mode broadcast: `mempool.space` API for mainnet/testnet4, server `/api/broadcast` for regtest.
 - Sweep and recover pages use `AbortController` with a 60-second timeout on fetch requests to prevent buttons getting stuck in loading state if the server hangs.
 - Sweep and recover pages use `finally` blocks to guarantee button state restoration on all code paths (success, error, timeout).
-- Bill template image (`bill_template.png`) is pre-loaded on page load; the Generate button is enabled only after the template loads successfully.
+- Bill template image (`assets/bill_template.png`) is pre-loaded on page load; the Generate button is enabled only after the template loads successfully.

@@ -14,7 +14,7 @@ env/
 
 # Test artifacts
 test-screenshots/
-test_bill_*.png
+**/test_bill_*.png
 
 # Claude Code
 .claude/settings.local.json
