@@ -246,16 +246,22 @@
     <script src="js/qr_generator.js"></script>
     <script>
         const ADDRESS = 'bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8';
+        const BIP21_URI = 'bitcoin:' + ADDRESS;
 
-        // Generate QR code on load
+        // Generate QR code on load using BIP21 URI (bitcoin:address)
+        // This enables Strike, BlueWallet, and all BIP21-compatible wallets
+        // to open their send screen directly when scanning
         (function() {
-            const dataUrl = QRGenerator.generateQRDataURL(ADDRESS, 250);
+            const dataUrl = QRGenerator.generateQRDataURL(BIP21_URI, 250);
+            const link = document.createElement('a');
+            link.href = BIP21_URI;
             const img = document.createElement('img');
             img.src = dataUrl;
             img.alt = 'Bitcoin donation QR code';
             img.width = 250;
             img.height = 250;
-            document.getElementById('qrCode').appendChild(img);
+            link.appendChild(img);
+            document.getElementById('qrCode').appendChild(link);
         })();
 
         // Hide faucet link if no server
