@@ -33,6 +33,16 @@ const CAPACITY_TABLE = {
     8:  { [EC_L]: [242,24,2,97,0,0],[EC_M]: [242,22,2,38,2,39],[EC_Q]: [242,22,4,18,2,19],[EC_H]: [242,26,4,14,2,15] },
     9:  { [EC_L]: [292,30,2,116,0,0],[EC_M]: [292,22,3,36,2,37],[EC_Q]: [292,20,4,16,4,17],[EC_H]: [292,24,4,12,4,13] },
     10: { [EC_L]: [346,18,2,68,2,69],[EC_M]: [346,26,4,43,1,44],[EC_Q]: [346,24,6,19,2,20],[EC_H]: [346,28,6,15,2,16] },
+    11: { [EC_L]: [404,20,4,81,0,0],[EC_M]: [404,30,1,50,4,51],[EC_Q]: [404,28,4,22,4,23],[EC_H]: [404,24,3,12,8,13] },
+    12: { [EC_L]: [466,24,2,92,2,93],[EC_M]: [466,22,6,36,2,37],[EC_Q]: [466,26,4,20,6,21],[EC_H]: [466,28,7,14,4,15] },
+    13: { [EC_L]: [532,26,4,107,0,0],[EC_M]: [532,22,8,37,1,38],[EC_Q]: [532,24,8,20,4,21],[EC_H]: [532,22,12,11,4,12] },
+    14: { [EC_L]: [581,30,3,115,1,116],[EC_M]: [581,24,4,40,5,41],[EC_Q]: [581,20,11,16,5,17],[EC_H]: [581,24,11,12,5,13] },
+    15: { [EC_L]: [655,22,5,87,1,88],[EC_M]: [655,24,5,41,5,42],[EC_Q]: [655,30,5,24,7,25],[EC_H]: [655,24,11,12,7,13] },
+    16: { [EC_L]: [733,24,5,98,1,99],[EC_M]: [733,28,7,45,3,46],[EC_Q]: [733,24,15,19,2,20],[EC_H]: [733,30,3,15,13,16] },
+    17: { [EC_L]: [815,28,1,107,5,108],[EC_M]: [815,28,10,46,1,47],[EC_Q]: [815,28,1,22,15,23],[EC_H]: [815,28,2,14,17,15] },
+    18: { [EC_L]: [901,30,5,120,1,121],[EC_M]: [901,26,9,43,4,44],[EC_Q]: [901,28,17,22,1,23],[EC_H]: [901,28,2,14,19,15] },
+    19: { [EC_L]: [991,28,3,113,4,114],[EC_M]: [991,26,3,44,11,45],[EC_Q]: [991,26,17,21,4,22],[EC_H]: [991,26,9,13,16,14] },
+    20: { [EC_L]: [1085,28,3,107,5,108],[EC_M]: [1085,26,3,41,13,42],[EC_Q]: [1085,28,15,24,5,25],[EC_H]: [1085,28,15,15,10,16] },
 };
 
 function _maxDataCapacity(version, ecLevel) {
@@ -43,6 +53,9 @@ function _maxDataCapacity(version, ecLevel) {
 const ALIGNMENT_POSITIONS = {
     1: [], 2: [6,18], 3: [6,22], 4: [6,26], 5: [6,30],
     6: [6,34], 7: [6,22,38], 8: [6,24,42], 9: [6,26,46], 10: [6,28,52],
+    11: [6,30,56], 12: [6,32,58], 13: [6,34,62], 14: [6,26,46,66],
+    15: [6,26,48,70], 16: [6,26,50,74], 17: [6,30,54,78], 18: [6,30,56,82],
+    19: [6,30,58,86], 20: [6,34,62,90],
 };
 
 
@@ -115,7 +128,7 @@ function rsEncode(data, nsym) {
 // ============================================================
 
 function _chooseVersion(dataLen, mode, ecLevel) {
-    for (let version = 1; version <= 10; version++) {
+    for (let version = 1; version <= 20; version++) {
         const capacity = _maxDataCapacity(version, ecLevel);
         let bitsNeeded = 4; // mode indicator
 
@@ -137,13 +150,18 @@ function _chooseVersion(dataLen, mode, ecLevel) {
             } else if (mode === MODE_ALPHANUMERIC) {
                 bitsNeeded += 11;
                 bitsNeeded += Math.floor(dataLen / 2) * 11 + (dataLen % 2) * 6;
+            } else if (mode === MODE_NUMERIC) {
+                bitsNeeded += 12;
+                const groups = Math.floor(dataLen / 3);
+                const rem = dataLen % 3;
+                bitsNeeded += groups * 10 + (rem === 2 ? 7 : rem === 1 ? 4 : 0);
             }
         }
 
         const bytesNeeded = Math.ceil(bitsNeeded / 8);
         if (bytesNeeded <= capacity) return version;
     }
-    throw new Error('Data too long for QR code (max version 10)');
+    throw new Error('Data too long for QR code (max version 20)');
 }
 
 function _encodeData(text, mode, version, ecLevel) {
@@ -401,26 +419,49 @@ function _addFormatInfo(matrix, size, ecLevel, maskId) {
     const formatBits = ((data << 10) | remainder) ^ 0b101010000010010;
 
     // Place format bits around top-left finder
+    // Horizontal: bits 14..7 along row 8
     const positionsH = [0, 1, 2, 3, 4, 5, 7, 8];
-    const positionsV = [8, 7, 5, 4, 3, 2, 1, 0];
-
     for (let i = 0; i < 8; i++) {
         matrix[8][positionsH[i]] = !!((formatBits >> (14 - i)) & 1);
     }
+    // Vertical: bits 6..0 along column 8 (row 7, skip 6, then 5..0)
+    const positionsV = [7, 5, 4, 3, 2, 1, 0];
     for (let i = 0; i < 7; i++) {
         matrix[positionsV[i]][8] = !!((formatBits >> (6 - i)) & 1);
     }
 
-    // Around top-right and bottom-left finders
+    // Second copy around top-right and bottom-left finders
     for (let i = 0; i < 8; i++) {
         matrix[size - 1 - i][8] = !!((formatBits >> (14 - i)) & 1);
     }
     for (let i = 0; i < 7; i++) {
         matrix[8][size - 7 + i] = !!((formatBits >> (6 - i)) & 1);
     }
+}
 
-    // Bit 8 special case
-    matrix[8][8] = !!((formatBits >> 7) & 1);
+function _addVersionInfo(matrix, size, version) {
+    if (version < 7) return;
+
+    // BCH(18,6) encoding of version number
+    let remainder = version << 12;
+    const generator = 0x1F25; // x^12 + x^11 + x^10 + x^9 + x^8 + x^5 + x^2 + 1
+    for (let i = 5; i >= 0; i--) {
+        if (remainder & (1 << (i + 12))) {
+            remainder ^= generator << i;
+        }
+    }
+    const versionBits = (version << 12) | remainder;
+
+    // Place in two 6×3 blocks
+    for (let i = 0; i < 6; i++) {
+        for (let j = 0; j < 3; j++) {
+            const bit = !!((versionBits >> (i * 3 + j)) & 1);
+            // Bottom-left of upper-right finder
+            matrix[i][size - 11 + j] = bit;
+            // Upper-right of lower-left finder
+            matrix[size - 11 + j][i] = bit;
+        }
+    }
 }
 
 function _scoreMask(matrix, size) {
@@ -504,6 +545,7 @@ function generateQR(text, ecLevel) {
     for (let maskId = 0; maskId < 8; maskId++) {
         const masked = _applyMask(matrix, reserved, size, maskId);
         _addFormatInfo(masked, size, ecLevel, maskId);
+        _addVersionInfo(masked, size, version);
         const score = _scoreMask(masked, size);
         if (score < bestScore) {
             bestScore = score;
