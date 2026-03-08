@@ -575,23 +575,23 @@ function qrToCanvas(matrix, ctx, x, y, moduleSize, border, fgColor, bgColor) {
     if (bgColor === undefined) bgColor = 'white';
 
     const size = matrix.length;
-    const totalSize = (size + 2 * border) * moduleSize;
+    const totalSize = Math.round((size + 2 * border) * moduleSize);
 
     // Draw background
     ctx.fillStyle = bgColor;
     ctx.fillRect(x, y, totalSize, totalSize);
 
-    // Draw dark modules
+    // Draw dark modules — use integer-rounded boundaries so adjacent cells
+    // share the same pixel edge, eliminating sub-pixel gaps from anti-aliasing.
     ctx.fillStyle = fgColor;
     for (let r = 0; r < size; r++) {
         for (let c = 0; c < size; c++) {
             if (matrix[r][c]) {
-                ctx.fillRect(
-                    x + (c + border) * moduleSize,
-                    y + (r + border) * moduleSize,
-                    moduleSize,
-                    moduleSize
-                );
+                const px = Math.round(x + (c + border) * moduleSize);
+                const py = Math.round(y + (r + border) * moduleSize);
+                const pw = Math.round(x + (c + border + 1) * moduleSize) - px;
+                const ph = Math.round(y + (r + border + 1) * moduleSize) - py;
+                ctx.fillRect(px, py, pw, ph);
             }
         }
     }
