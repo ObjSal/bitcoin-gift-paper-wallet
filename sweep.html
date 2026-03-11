@@ -143,37 +143,25 @@
             cursor: pointer;
         }
 
-        .fee-row {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .fee-row input {
-            width: 120px !important;
-            flex-shrink: 0;
-        }
-
-        .fee-estimate {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            font-family: 'Courier New', monospace;
-            white-space: nowrap;
-        }
-
         .fee-presets {
             display: flex;
-            gap: 0.5rem;
-            margin-top: 0.5rem;
+            gap: 0.4rem;
+            margin-top: 0.4rem;
+            margin-bottom: 0.3rem;
+        }
+
+        .fee-presets button {
+            width: auto;
+            padding: 0.3rem 0.7rem;
+            font-size: 0.9rem;
         }
 
         .fee-btn {
-            flex: 1;
             padding: 0.4rem 0.5rem;
-            border: 1px solid rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: 8px;
-            background: rgba(255,255,255,0.05);
-            color: var(--text-secondary);
+            background: rgba(255,255,255,0.1);
+            color: var(--text-primary);
             cursor: pointer;
             text-align: center;
             transition: all 0.2s;
@@ -182,29 +170,14 @@
         }
 
         .fee-btn:hover {
-            background: rgba(247, 147, 26, 0.15);
-            border-color: var(--btc-orange);
-            color: var(--text-primary);
+            background: rgba(255,255,255,0.15);
         }
 
-        .fee-btn.active {
-            background: rgba(247, 147, 26, 0.2);
-            border-color: var(--btc-orange);
-            color: var(--btc-orange);
-        }
-
-        .fee-label {
-            display: block;
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.03em;
-        }
-
-        .fee-value {
-            display: block;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
+        .fee-preset.active,
+        .tip-preset.active {
+            background: var(--btc-orange);
+            color: #fff;
+            border-color: #e8850f;
         }
 
         .btn {
@@ -372,8 +345,6 @@
             .container { padding: 1rem; }
             header h1 { font-size: 1.5rem; }
             .radio-group { flex-direction: column; gap: 0.5rem; }
-            .fee-row { flex-direction: column; align-items: flex-start; }
-            .fee-row input { width: 100% !important; }
         }
     </style>
 </head>
@@ -491,40 +462,51 @@
                        autocomplete="off" spellcheck="false">
             </div>
 
-            <div class="form-group">
-                <label>Fee Rate (sat/vB)</label>
-                <div class="fee-row">
-                    <input type="number" id="feeRate" value="10" min="1" max="1000"
-                           oninput="updateFeeEstimate(); highlightActivePreset()">
-                    <span class="fee-estimate" id="feeEstimate">= calculating...</span>
+            <div id="feeRateGroup" style="margin-top:1rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;" id="feeRateToggle">
+                    <h3 style="margin:0;font-size:1rem;color:var(--text-secondary);">Fee Rate</h3>
+                    <span id="feeRateChevron" style="font-size:0.7rem;color:var(--text-secondary);transition:transform 0.2s;transform:rotate(-90deg);">&#9660;</span>
+                    <span id="feeRateSummary" style="color:var(--text-secondary);font-size:0.85rem;"></span>
                 </div>
-                <div class="fee-presets" id="feePresets">
-                    <button type="button" class="fee-btn" data-fee="low" onclick="applyFeePreset('low')">
-                        <span class="fee-label">Low</span>
-                        <span class="fee-value" id="feeLow">&mdash;</span>
-                    </button>
-                    <button type="button" class="fee-btn" data-fee="med" onclick="applyFeePreset('med')">
-                        <span class="fee-label">Med</span>
-                        <span class="fee-value" id="feeMed">&mdash;</span>
-                    </button>
-                    <button type="button" class="fee-btn" data-fee="high" onclick="applyFeePreset('high')">
-                        <span class="fee-label">High</span>
-                        <span class="fee-value" id="feeHigh">&mdash;</span>
-                    </button>
+                <div id="feeRateBody" style="display:none;">
+                    <div class="fee-presets" id="feePresets">
+                        <button type="button" class="fee-btn fee-preset" data-speed="low">Low: --</button>
+                        <button type="button" class="fee-btn fee-preset" data-speed="med">Med: --</button>
+                        <button type="button" class="fee-btn fee-preset" data-speed="high">High: --</button>
+                        <button type="button" class="fee-btn" id="refreshFees" style="font-size:0.85rem;padding:0.3rem 0.5rem;">&#x21bb;</button>
+                    </div>
+                    <input type="number" id="feeRate" placeholder="or enter custom sat/vB" min="1" max="1000"
+                           style="max-width:280px;padding:0.4rem 0.5rem;font-size:0.9rem;border:1px solid rgba(255,255,255,0.15);border-radius:8px;background:rgba(255,255,255,0.08);color:var(--text-primary);font-family:inherit;">
+                    <div id="feeCalc" style="margin-top:0.5rem;color:var(--text-secondary);font-size:0.85rem;"></div>
+                </div>
+            </div>
+
+            <div id="tipGroup" style="margin-top:1rem;">
+                <div style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;" id="tipToggle">
+                    <h3 style="margin:0;font-size:1rem;color:var(--text-secondary);">Tip</h3>
+                    <span id="tipChevron" style="font-size:0.7rem;color:var(--text-secondary);transition:transform 0.2s;transform:rotate(-90deg);">&#9660;</span>
+                    <span id="tipSummary" style="color:var(--text-secondary);font-size:0.85rem;">No tip</span>
+                </div>
+                <div id="tipBody" style="display:none;">
+                    <div class="fee-presets" id="tipPresets" style="margin-bottom:0.3rem;">
+                        <button type="button" class="fee-btn tip-preset active" data-pct="0.99">0.99%</button>
+                        <button type="button" class="fee-btn tip-preset" data-pct="0.5">0.5%</button>
+                        <button type="button" class="fee-btn tip-preset" data-pct="0.1">0.1%</button>
+                        <button type="button" class="fee-btn tip-preset" data-pct="0">No Tip</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.4rem;">
+                        <input type="text" id="tipAddress" value="bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8" readonly
+                               style="flex:1;padding:0.5rem 0.75rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:var(--text-secondary);font-family:'Courier New',monospace;font-size:0.75rem;cursor:default;">
+                        <input type="number" id="tipSats" placeholder="sats" min="0"
+                               style="width:110px;flex:0 0 110px;padding:0.5rem 0.75rem;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:var(--text-primary);font-family:'Courier New',monospace;font-size:0.9rem;">
+                    </div>
+                    <p style="color:var(--text-secondary);font-size:0.75rem;margin-top:0.2rem;">Support this open-source project</p>
                 </div>
             </div>
 
             <div class="info-box balance" style="margin-top: 1rem;">
-                <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
-                    <div>
-                        <div class="info-label">You will receive</div>
-                        <div class="info-value" id="receiveAmount">--</div>
-                    </div>
-                    <div>
-                        <div class="info-label">Fee</div>
-                        <div class="info-value" id="feeAmount">--</div>
-                    </div>
-                </div>
+                <div class="info-label">You will receive</div>
+                <div class="info-value" id="receiveAmount">--</div>
             </div>
 
             <div class="action-bar">
@@ -588,15 +570,21 @@
         })();
 
         // Fee preset state and functions
-        const feePresets = { low: null, med: null, high: null };
-
         async function fetchFeePresets() {
             const network = document.getElementById('networkSelect').value;
+            const buttons = document.querySelectorAll('.fee-preset');
 
             if (network === 'regtest') {
-                feePresets.low = 1; feePresets.med = 1; feePresets.high = 1;
-                renderFeePresets();
-                if (feePresets.low != null) applyFeePreset('low');
+                buttons.forEach(btn => {
+                    const speed = btn.dataset.speed;
+                    const rate = 1;
+                    btn.textContent = `${speed.charAt(0).toUpperCase() + speed.slice(1)}: ${rate}`;
+                    btn.dataset.rate = rate;
+                });
+                if (!document.getElementById('feeRate').value) {
+                    const lowBtn = document.querySelector('.fee-preset[data-speed="low"]');
+                    if (lowBtn) lowBtn.click();
+                }
                 return;
             }
 
@@ -605,42 +593,153 @@
             try {
                 const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
                 if (!resp.ok) throw new Error(resp.status);
-                const data = await resp.json();
-                feePresets.low = data.hourFee;
-                feePresets.med = data.halfHourFee;
-                feePresets.high = data.fastestFee;
+                const fees = await resp.json();
+                buttons.forEach(btn => {
+                    const speed = btn.dataset.speed;
+                    if (speed === 'low') btn.textContent = `Low: ${fees.hourFee}`;
+                    if (speed === 'med') btn.textContent = `Med: ${fees.halfHourFee}`;
+                    if (speed === 'high') btn.textContent = `High: ${fees.fastestFee}`;
+                    btn.dataset.rate = speed === 'high' ? fees.fastestFee
+                        : speed === 'med' ? fees.halfHourFee : fees.hourFee;
+                });
+                if (!document.getElementById('feeRate').value) {
+                    const lowBtn = document.querySelector('.fee-preset[data-speed="low"]');
+                    if (lowBtn) lowBtn.click();
+                }
             } catch (e) {
-                feePresets.low = null; feePresets.med = null; feePresets.high = null;
+                buttons.forEach(btn => {
+                    const speed = btn.dataset.speed;
+                    btn.textContent = `${speed.charAt(0).toUpperCase() + speed.slice(1)}: N/A`;
+                });
             }
-            renderFeePresets();
-            if (feePresets.low != null) applyFeePreset('low');
         }
 
-        function renderFeePresets() {
-            ['low', 'med', 'high'].forEach(tier => {
-                const el = document.getElementById('fee' + tier.charAt(0).toUpperCase() + tier.slice(1));
-                el.textContent = feePresets[tier] != null ? feePresets[tier] + ' sat/vB' : '\u2014';
+        // Fee preset button clicks
+        document.querySelectorAll('.fee-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const rate = btn.dataset.rate;
+                if (rate) {
+                    document.getElementById('feeRate').value = rate;
+                    document.querySelectorAll('.fee-preset').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    updateFeeEstimate();
+                    updateFeeRateSummary();
+                }
             });
-            highlightActivePreset();
-        }
+        });
 
-        function applyFeePreset(tier) {
-            const val = feePresets[tier];
-            if (val == null) return;
-            document.getElementById('feeRate').value = val;
+        // Manual fee rate input clears preset selection
+        document.getElementById('feeRate').addEventListener('input', () => {
+            document.querySelectorAll('.fee-preset').forEach(b => b.classList.remove('active'));
             updateFeeEstimate();
-            highlightActivePreset();
+            updateFeeRateSummary();
+        });
+
+        // Refresh button
+        document.getElementById('refreshFees').addEventListener('click', (e) => {
+            e.stopPropagation();
+            fetchFeePresets();
+        });
+
+        document.getElementById('networkSelect').addEventListener('change', () => {
+            document.getElementById('feeRate').value = '';
+            document.querySelectorAll('.fee-preset').forEach(b => b.classList.remove('active'));
+            fetchFeePresets();
+            updateTipAddress();
+        });
+
+        // Fee Rate collapsible toggle
+        const feeRateToggle = document.getElementById('feeRateToggle');
+        const feeRateBody = document.getElementById('feeRateBody');
+        const feeRateSummaryEl = document.getElementById('feeRateSummary');
+        const feeRateChevron = document.getElementById('feeRateChevron');
+        feeRateToggle.addEventListener('click', () => {
+            const isOpen = feeRateBody.style.display !== 'none';
+            feeRateBody.style.display = isOpen ? 'none' : '';
+            feeRateSummaryEl.style.display = isOpen ? '' : 'none';
+            feeRateChevron.style.transform = isOpen ? 'rotate(-90deg)' : '';
+        });
+
+        function updateFeeRateSummary() {
+            const feeRate = parseInt(document.getElementById('feeRate').value) || 0;
+            if (feeRate > 0) {
+                const activeBtn = document.querySelector('.fee-preset.active');
+                const tierLabel = activeBtn ? activeBtn.dataset.speed.charAt(0).toUpperCase() + activeBtn.dataset.speed.slice(1) : '';
+                const vsize = estimateVsize();
+                const feeSat = vsize * feeRate;
+                const feePct = state.totalSat > 0 ? (feeSat / state.totalSat * 100).toFixed(2) : '';
+                let text = '';
+                if (feeSat > 0) text += `~${feeSat.toLocaleString()} sats \u2022 `;
+                if (tierLabel) text += `${tierLabel} (${feeRate} sat/vB)`;
+                else text += `${feeRate} sat/vB`;
+                if (feePct) text += ` | ${feePct}%`;
+                feeRateSummaryEl.textContent = text;
+            } else {
+                feeRateSummaryEl.textContent = '';
+            }
         }
 
-        function highlightActivePreset() {
-            const current = parseInt(document.getElementById('feeRate').value);
-            document.querySelectorAll('.fee-btn').forEach(btn => {
-                const tier = btn.dataset.fee;
-                btn.classList.toggle('active', feePresets[tier] != null && feePresets[tier] === current);
+        // Tip section
+        const TIP_ADDRESSES = {
+            mainnet: 'bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8',
+            testnet4: 'tb1q2ylq48ne37ng9clds23xjcrxp8hmn707j5vpyk',
+            regtest: 'bcrt1qrx4ree6dujheqmpd62cnws9zs0eak8v7vtuhv9',
+        };
+
+        const tipToggle = document.getElementById('tipToggle');
+        const tipBody = document.getElementById('tipBody');
+        const tipSummaryEl = document.getElementById('tipSummary');
+        const tipChevron = document.getElementById('tipChevron');
+
+        tipToggle.addEventListener('click', () => {
+            const isOpen = tipBody.style.display !== 'none';
+            tipBody.style.display = isOpen ? 'none' : '';
+            tipSummaryEl.style.display = isOpen ? '' : 'none';
+            tipChevron.style.transform = isOpen ? 'rotate(-90deg)' : '';
+        });
+
+        function getTipSats() {
+            return parseInt(document.getElementById('tipSats').value) || 0;
+        }
+
+        function updateTipSummary() {
+            const tipSats = getTipSats();
+            if (tipSats > 0) {
+                const pct = state.totalSat > 0 ? (tipSats / state.totalSat * 100).toFixed(2) : '0.00';
+                tipSummaryEl.textContent = `${tipSats.toLocaleString()} sats | ${pct}%`;
+            } else {
+                tipSummaryEl.textContent = 'No tip';
+            }
+        }
+
+        function recalcTipIfPreset() {
+            const activeBtn = document.querySelector('.tip-preset.active');
+            if (!activeBtn) return;
+            const pct = parseFloat(activeBtn.dataset.pct);
+            const tipSats = Math.floor(state.totalSat * pct / 100);
+            document.getElementById('tipSats').value = tipSats || '';
+            updateTipSummary();
+        }
+
+        document.querySelectorAll('.tip-preset').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tip-preset').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                recalcTipIfPreset();
+                updateFeeEstimate();
             });
-        }
+        });
 
-        document.getElementById('networkSelect').addEventListener('change', fetchFeePresets);
+        document.getElementById('tipSats').addEventListener('input', () => {
+            document.querySelectorAll('.tip-preset').forEach(b => b.classList.remove('active'));
+            updateTipSummary();
+            updateFeeEstimate();
+        });
+
+        function updateTipAddress() {
+            const net = document.getElementById('networkSelect').value;
+            document.getElementById('tipAddress').value = TIP_ADDRESSES[net] || TIP_ADDRESSES.mainnet;
+        }
 
         // Dual-mode UTXO fetch
         async function fetchUtxos(address, network) {
@@ -756,8 +855,24 @@
                       utxos: [], totalSat: 0, nInputs: 0 };
             document.getElementById('wifInput').value = '';
             document.getElementById('destAddress').value = '';
-            document.getElementById('feeRate').value = feePresets.low != null ? feePresets.low : '10';
-            highlightActivePreset();
+            document.getElementById('feeRate').value = '';
+            document.querySelectorAll('.fee-preset').forEach(b => b.classList.remove('active'));
+            document.getElementById('feeCalc').textContent = '';
+            fetchFeePresets();
+            // Reset fee rate collapse
+            feeRateBody.style.display = 'none';
+            feeRateSummaryEl.style.display = '';
+            feeRateChevron.style.transform = 'rotate(-90deg)';
+            updateFeeRateSummary();
+            // Reset tip
+            document.getElementById('tipSats').value = '';
+            document.querySelectorAll('.tip-preset').forEach(b => b.classList.remove('active'));
+            document.querySelector('.tip-preset[data-pct="0.99"]').classList.add('active');
+            tipBody.style.display = 'none';
+            tipSummaryEl.style.display = '';
+            tipChevron.style.transform = 'rotate(-90deg)';
+            recalcTipIfPreset();
+            updateTipAddress();
             setStep(1);
             showCard('cardStep1');
             hideError();
@@ -866,36 +981,38 @@
 
         function estimateVsize() {
             const n = state.nInputs;
+            const tipExtra = getTipSats() > 0 ? 31 : 0; // P2WPKH tip output
             if (state.addressType === 'segwit') {
-                return 11 + n * 69 + 31;
+                return 11 + n * 69 + 31 + tipExtra;
             } else {
-                return 11 + n * 58 + 43;
+                return 11 + n * 58 + 43 + tipExtra;
             }
         }
 
         function updateFeeEstimate() {
+            recalcTipIfPreset();
             const feeRate = parseInt(document.getElementById('feeRate').value) || 1;
+            const tipSat = getTipSats();
             const vsize = estimateVsize();
             const feeSat = vsize * feeRate;
-            const receiveSat = state.totalSat - feeSat;
+            const receiveSat = state.totalSat - feeSat - tipSat;
 
-            document.getElementById('feeEstimate').textContent =
-                `= ${feeSat.toLocaleString()} sats (${vsize} vB)`;
+            const feeCalc = document.getElementById('feeCalc');
+            feeCalc.textContent = `Estimated fee: ${feeSat.toLocaleString()} sats (${vsize} vB)`;
+            feeCalc.style.display = feeSat > 0 ? '' : 'none';
 
             if (receiveSat > 0) {
                 const btc = (receiveSat / 1e8).toFixed(8);
                 document.getElementById('receiveAmount').textContent =
                     `${receiveSat.toLocaleString()} sats (${btc} BTC)`;
-                document.getElementById('feeAmount').textContent =
-                    `${feeSat.toLocaleString()} sats`;
                 document.getElementById('btnSweep').disabled = false;
             } else {
                 document.getElementById('receiveAmount').textContent =
                     'Insufficient funds for this fee rate';
-                document.getElementById('feeAmount').textContent =
-                    `${feeSat.toLocaleString()} sats`;
                 document.getElementById('btnSweep').disabled = true;
             }
+
+            updateFeeRateSummary();
         }
 
         async function sweep() {
@@ -924,20 +1041,25 @@
             btn.innerHTML = '<div class="spinner"></div>';
 
             try {
+                const tipSat = getTipSats();
+                const tipAddr = document.getElementById('tipAddress').value.trim();
                 const vsize = estimateVsize();
                 const feeSat = vsize * feeRate;
-                const amountSat = state.totalSat - feeSat;
+                const amountSat = state.totalSat - feeSat - tipSat;
 
                 if (amountSat <= 0) {
                     alert('Insufficient funds for this fee rate.');
                     return;
                 }
 
+                const extraOutputs = (tipSat > 0 && tipAddr)
+                    ? [{ address: tipAddr, value: tipSat }] : undefined;
+
                 // Client-side transaction construction and signing
                 let rawHex;
                 if (state.addressType === 'segwit') {
                     rawHex = BitcoinCrypto.buildSignedSegwitSweepTx(
-                        state.privkeyBytes, state.utxos, destAddr, amountSat
+                        state.privkeyBytes, state.utxos, destAddr, amountSat, extraOutputs
                     );
                 } else {
                     // Both taproot_tweaked and taproot (standard)
@@ -945,7 +1067,7 @@
                         ? state.privkeyBytes
                         : state.tweakedPrivkey;
                     rawHex = BitcoinCrypto.buildSignedTaprootSweepTx(
-                        signingKey, state.utxos, state.inputScriptpubkey, destAddr, amountSat
+                        signingKey, state.utxos, state.inputScriptpubkey, destAddr, amountSat, extraOutputs
                     );
                 }
 
@@ -978,6 +1100,11 @@
                 html += `<br>`;
                 html += `<div class="info-label">Destination</div>`;
                 html += `<div class="info-value">${destAddr}</div>`;
+                if (tipSat > 0) {
+                    html += `<br>`;
+                    html += `<div class="info-label">Tip</div>`;
+                    html += `<div class="info-value">${tipSat.toLocaleString()} sats</div>`;
+                }
 
                 if (state.network === 'regtest') {
                     html += `<br>`;

@@ -1612,7 +1612,7 @@ function sighashTaprootScriptPath(txVersion, txLocktime, inputs, outputs,
  * Build a fully signed SegWit P2WPKH sweep transaction.
  * utxos: array of { txid: hex string, vout: number, value_sat: number }
  */
-function buildSignedSegwitSweepTx(privkeyBytes, utxos, destAddress, destValue) {
+function buildSignedSegwitSweepTx(privkeyBytes, utxos, destAddress, destValue, extraOutputs) {
     const pubkey = privateKeyToPublicKey(privkeyBytes, true);
     const pubkeyHash = hash160(pubkey);
     const scriptcode = buildP2wpkhScriptcode(pubkeyHash);
@@ -1625,6 +1625,11 @@ function buildSignedSegwitSweepTx(privkeyBytes, utxos, destAddress, destValue) {
 
     const destSpk = _addressToScriptpubkey(destAddress);
     const outputs = [{ value: destValue, scriptPubKey: destSpk }];
+    if (extraOutputs) {
+        for (const eo of extraOutputs) {
+            outputs.push({ value: eo.value, scriptPubKey: _addressToScriptpubkey(eo.address) });
+        }
+    }
 
     // Sign each input
     const signatures = [];
@@ -1684,7 +1689,7 @@ function buildSignedSegwitSweepTx(privkeyBytes, utxos, destAddress, destValue) {
  * utxos: array of { txid: hex string, vout: number, value_sat: number }
  */
 function buildSignedTaprootSweepTx(tweakedPrivkeyBytes, utxos, inputScriptpubkey,
-                                     destAddress, destValue) {
+                                     destAddress, destValue, extraOutputs) {
     const inputs = utxos.map(u => ({
         txid: hexToBytes(u.txid).reverse(),
         vout: u.vout,
@@ -1696,6 +1701,11 @@ function buildSignedTaprootSweepTx(tweakedPrivkeyBytes, utxos, inputScriptpubkey
 
     const destSpk = _addressToScriptpubkey(destAddress);
     const outputs = [{ value: destValue, scriptPubKey: destSpk }];
+    if (extraOutputs) {
+        for (const eo of extraOutputs) {
+            outputs.push({ value: eo.value, scriptPubKey: _addressToScriptpubkey(eo.address) });
+        }
+    }
 
     // Sign each input
     const signatures = [];
