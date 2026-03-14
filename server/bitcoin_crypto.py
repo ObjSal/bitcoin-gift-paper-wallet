@@ -1250,7 +1250,7 @@ def build_signed_taproot_scriptpath_tx(backup_privkey_bytes, backup_pubkey_x,
 
 
 def build_signed_taproot_sweep_tx(tweaked_privkey_bytes, utxos, input_scriptpubkey,
-                                    dest_address, dest_value):
+                                    dest_address, dest_value, extra_outputs=None):
     """Build a fully signed Taproot key path transaction sweeping multiple UTXOs.
 
     All UTXOs must belong to the same tweaked key (same address).
@@ -1261,6 +1261,7 @@ def build_signed_taproot_sweep_tx(tweaked_privkey_bytes, utxos, input_scriptpubk
         input_scriptpubkey: bytes, the scriptPubKey for all inputs (same address)
         dest_address: destination bech32/bech32m address
         dest_value: satoshis to send (total - fee)
+        extra_outputs: optional list of dicts with keys: address (str), value (int)
 
     Returns hex-encoded raw transaction.
     """
@@ -1276,6 +1277,9 @@ def build_signed_taproot_sweep_tx(tweaked_privkey_bytes, utxos, input_scriptpubk
 
     dest_spk = _address_to_scriptpubkey(dest_address)
     outputs = [(dest_value, dest_spk)]
+    if extra_outputs:
+        for eo in extra_outputs:
+            outputs.append((eo["value"], _address_to_scriptpubkey(eo["address"])))
 
     # Sign each input
     signatures = []
@@ -1315,7 +1319,7 @@ def build_signed_taproot_sweep_tx(tweaked_privkey_bytes, utxos, input_scriptpubk
     return tx.hex()
 
 
-def build_signed_segwit_sweep_tx(privkey_bytes, utxos, dest_address, dest_value):
+def build_signed_segwit_sweep_tx(privkey_bytes, utxos, dest_address, dest_value, extra_outputs=None):
     """Build a fully signed SegWit P2WPKH transaction sweeping multiple UTXOs.
 
     All UTXOs must belong to the same key (same address).
@@ -1325,6 +1329,7 @@ def build_signed_segwit_sweep_tx(privkey_bytes, utxos, dest_address, dest_value)
         utxos: list of dicts with keys: txid (hex str), vout (int), value_sat (int)
         dest_address: destination bech32/bech32m address
         dest_value: satoshis to send (total - fee)
+        extra_outputs: optional list of dicts with keys: address (str), value (int)
 
     Returns hex-encoded raw transaction.
     """
@@ -1339,6 +1344,9 @@ def build_signed_segwit_sweep_tx(privkey_bytes, utxos, dest_address, dest_value)
 
     dest_spk = _address_to_scriptpubkey(dest_address)
     outputs = [(dest_value, dest_spk)]
+    if extra_outputs:
+        for eo in extra_outputs:
+            outputs.append((eo["value"], _address_to_scriptpubkey(eo["address"])))
 
     # Sign each input
     signatures = []
@@ -1383,7 +1391,7 @@ def build_signed_segwit_sweep_tx(privkey_bytes, utxos, dest_address, dest_value)
 def build_signed_taproot_scriptpath_sweep_tx(backup_privkey_bytes, backup_pubkey_x,
                                               internal_pubkey_x, output_parity,
                                               utxos, input_scriptpubkey,
-                                              dest_address, dest_value):
+                                              dest_address, dest_value, extra_outputs=None):
     """Build a fully signed Taproot script path sweep transaction using the backup key.
 
     All UTXOs must belong to the same address.
@@ -1412,6 +1420,9 @@ def build_signed_taproot_scriptpath_sweep_tx(backup_privkey_bytes, backup_pubkey
 
     dest_spk = _address_to_scriptpubkey(dest_address)
     outputs = [(dest_value, dest_spk)]
+    if extra_outputs:
+        for eo in extra_outputs:
+            outputs.append((eo["value"], _address_to_scriptpubkey(eo["address"])))
 
     # The tapscript being executed: <backup_pubkey> OP_CHECKSIG
     leaf_script = bytes([0x20]) + backup_pubkey_x + bytes([0xac])

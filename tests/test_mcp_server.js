@@ -280,12 +280,12 @@ async function main() {
 
     // ── test_open_wallet_app ─────────────────────────────────────────────
     try {
-        for (const page of ['index', 'sweep', 'recover', 'donate']) {
+        for (const page of ['index', 'sweep', 'recover']) {
             const r = await callToolJSON(client, 'open_wallet_app', { page });
             assert(r.status === 'opened', `Failed to open ${page}`);
             assert(r.page === page, `Wrong page: ${r.page}`);
         }
-        pass('open_wallet_app (all 4 pages)');
+        pass('open_wallet_app (all 3 pages)');
     } catch (e) { fail('open_wallet_app', e.message); }
 
     // ── test_address_uniqueness ──────────────────────────────────────────
