@@ -285,11 +285,11 @@ async def run_tests():
 
             # ── test_open_wallet_app ──────────────────────────────────
             try:
-                for page in ["index", "sweep", "recover", "donate"]:
+                for page in ["index", "sweep", "recover"]:
                     r = await call_tool_json(session, "open_wallet_app", {"page": page})
                     assert r["status"] == "opened", f"Failed to open {page}"
                     assert r["page"] == page
-                pass_test("open_wallet_app (all 4 pages)")
+                pass_test("open_wallet_app (all 3 pages)")
             except Exception as e:
                 fail_test("open_wallet_app", e)
 

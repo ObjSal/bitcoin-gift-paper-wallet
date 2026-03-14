@@ -65,6 +65,14 @@ def _open_file(path: str):
     subprocess.Popen(["open", path])
 
 
+# ── Tip/donation addresses ───────────────────────────────────────────────────
+
+TIP_ADDRESSES = {
+    "mainnet":  "bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8",
+    "testnet4": "tb1q2ylq48ne37ng9clds23xjcrxp8hmn707j5vpyk",
+    "regtest":  "bcrt1qrx4ree6dujheqmpd62cnws9zs0eak8v7vtuhv9",
+}
+
 # ── Network API helpers ───────────────────────────────────────────────────────
 #
 # Supports mainnet/testnet4 via mempool.space and regtest via local server.
@@ -247,6 +255,8 @@ async def list_tools() -> list[types.Tool]:
                 "Sweep all funds from a paper wallet to a destination address. "
                 "Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, "
                 "and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. "
+                "IMPORTANT: Before sweeping, ask the user which tip percentage they'd like to include "
+                "(0.99% recommended, 0.5%, 0.1%, or no tip). "
                 "WARNING: This sends real Bitcoin — double-check the destination address."
             ),
             inputSchema={
@@ -264,6 +274,12 @@ async def list_tools() -> list[types.Tool]:
                         "type": "number",
                         "description": "Fee rate in sat/vB. If omitted, uses the 'half hour' recommended fee.",
                     },
+                    "tip_percent": {
+                        "type": "number",
+                        "enum": [0.99, 0.5, 0.1, 0],
+                        "default": 0.99,
+                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).",
+                    },
                     "network": {
                         "type": "string",
                         "enum": ["mainnet", "testnet4", "regtest"],
@@ -279,6 +295,8 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Recover funds from a Taproot paper wallet using the backup key (script-path spend). "
                 "Requires the backup private key WIF and the internal public key (both from the backup JSON). "
+                "IMPORTANT: Before recovering, ask the user which tip percentage they'd like to include "
+                "(0.99% recommended, 0.5%, 0.1%, or no tip). "
                 "WARNING: This sends real Bitcoin — double-check the destination address."
             ),
             inputSchema={
@@ -299,6 +317,12 @@ async def list_tools() -> list[types.Tool]:
                     "fee_rate": {
                         "type": "number",
                         "description": "Fee rate in sat/vB. If omitted, uses the 'half hour' recommended fee.",
+                    },
+                    "tip_percent": {
+                        "type": "number",
+                        "enum": [0.99, 0.5, 0.1, 0],
+                        "default": 0.99,
+                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).",
                     },
                     "network": {
                         "type": "string",
@@ -322,7 +346,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "page": {
                         "type": "string",
-                        "enum": ["index", "sweep", "recover", "donate"],
+                        "enum": ["index", "sweep", "recover"],
                         "default": "index",
                         "description": "Which page to open.",
                     },
@@ -571,32 +595,41 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             fees = _fetch_fee_rates(network)
             fee_rate = fees["halfHourFee"]
 
-        # Estimate vsize
+        # Compute tip
+        tip_percent = arguments.get("tip_percent", 0.99)
+        tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
+        tip_addr = TIP_ADDRESSES.get(network, TIP_ADDRESSES["mainnet"])
+
+        # Estimate vsize (add 31 vB for P2WPKH tip output if tipping)
         n_inputs = len(utxos)
+        tip_extra = 31 if tip_sat > 0 else 0
         if address_type == "segwit":
-            vsize = 11 + n_inputs * 69 + 31
+            vsize = 11 + n_inputs * 69 + 31 + tip_extra
         else:
-            vsize = 11 + n_inputs * 58 + 43
+            vsize = 11 + n_inputs * 58 + 43 + tip_extra
 
         fee_sat = int(vsize * fee_rate + 0.999)
-        send_sat = total_sat - fee_sat
+        send_sat = total_sat - fee_sat - tip_sat
 
         if send_sat <= 0:
             return [types.TextContent(type="text", text=json.dumps({
                 "error": "Insufficient funds",
                 "balance_sats": total_sat,
                 "estimated_fee_sats": fee_sat,
+                "tip_sats": tip_sat,
                 "fee_rate": fee_rate,
             }, indent=2))]
 
+        # Build extra outputs for tip
+        extra_outputs = [{"address": tip_addr, "value": tip_sat}] if tip_sat > 0 else None
+
         # Build and sign
-        # Python functions expect bytes for private key, list[dict] for utxos
         signing_key_bytes = signing_key_int.to_bytes(32, "big")
         if address_type == "segwit":
-            raw_hex = bc.build_signed_segwit_sweep_tx(signing_key_bytes, utxos, destination, send_sat)
+            raw_hex = bc.build_signed_segwit_sweep_tx(signing_key_bytes, utxos, destination, send_sat, extra_outputs)
         else:
             input_sp = bc._address_to_scriptpubkey(address)
-            raw_hex = bc.build_signed_taproot_sweep_tx(signing_key_bytes, utxos, input_sp, destination, send_sat)
+            raw_hex = bc.build_signed_taproot_sweep_tx(signing_key_bytes, utxos, input_sp, destination, send_sat, extra_outputs)
 
         txid = _broadcast_tx(raw_hex, network)
 
@@ -610,8 +643,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             "amount_btc": send_sat / 1e8,
             "fee_sats": fee_sat,
             "fee_rate_sat_vb": fee_rate,
-            "explorer_url": _explorer_url(txid, network),
+            "tip_sats": tip_sat,
+            "tip_percent": tip_percent,
         }
+        if tip_sat > 0:
+            result["tip_address"] = tip_addr
+        result["explorer_url"] = _explorer_url(txid, network)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     # ── recover_wallet ────────────────────────────────────────────────────────
@@ -658,29 +695,37 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             fees = _fetch_fee_rates(network)
             fee_rate = fees["halfHourFee"]
 
-        # Estimate vsize (script-path)
+        # Compute tip
+        tip_percent = arguments.get("tip_percent", 0.99)
+        tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
+        tip_addr = TIP_ADDRESSES.get(network, TIP_ADDRESSES["mainnet"])
+
+        # Estimate vsize (script-path, add 31 vB for P2WPKH tip output if tipping)
         n_inputs = len(utxos)
-        vsize = 11 + n_inputs * 107 + 43
+        tip_extra = 31 if tip_sat > 0 else 0
+        vsize = 11 + n_inputs * 107 + 43 + tip_extra
         fee_sat = int(vsize * fee_rate + 0.999)
-        send_sat = total_sat - fee_sat
+        send_sat = total_sat - fee_sat - tip_sat
 
         if send_sat <= 0:
             return [types.TextContent(type="text", text=json.dumps({
                 "error": "Insufficient funds",
                 "balance_sats": total_sat,
                 "estimated_fee_sats": fee_sat,
+                "tip_sats": tip_sat,
                 "fee_rate": fee_rate,
             }, indent=2))]
 
+        # Build extra outputs for tip
+        extra_outputs = [{"address": tip_addr, "value": tip_sat}] if tip_sat > 0 else None
+
         # Build and sign script-path transaction
-        # Python function expects: bytes privkey, bytes pubkey_x, bytes internal_x,
-        # int parity, list[dict] utxos, bytes input_scriptpubkey, str dest, int value
         input_scriptpubkey = bc._address_to_scriptpubkey(address)
         raw_hex = bc.build_signed_taproot_scriptpath_sweep_tx(
             backup_privkey_bytes, backup_pubkey_x,
             internal_pubkey_x, parity,
             utxos, input_scriptpubkey,
-            destination, send_sat,
+            destination, send_sat, extra_outputs,
         )
 
         txid = _broadcast_tx(raw_hex, network)
@@ -695,8 +740,12 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             "amount_btc": send_sat / 1e8,
             "fee_sats": fee_sat,
             "fee_rate_sat_vb": fee_rate,
-            "explorer_url": _explorer_url(txid, network),
+            "tip_sats": tip_sat,
+            "tip_percent": tip_percent,
         }
+        if tip_sat > 0:
+            result["tip_address"] = tip_addr
+        result["explorer_url"] = _explorer_url(txid, network)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     # ── open_wallet_app ───────────────────────────────────────────────────────
@@ -706,7 +755,6 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             "index": "index.html",
             "sweep": "sweep.html",
             "recover": "recover.html",
-            "donate": "donate.html",
         }
         filename = page_map.get(page, "index.html")
         path = os.path.join(PROJECT_ROOT, filename)

@@ -1764,7 +1764,7 @@ function buildSignedTaprootSweepTx(tweakedPrivkeyBytes, utxos, inputScriptpubkey
 function buildSignedTaprootScriptpathSweepTx(backupPrivkeyBytes, backupPubkeyX,
                                                internalPubkeyX, outputParity,
                                                utxos, inputScriptpubkey,
-                                               destAddress, destValue) {
+                                               destAddress, destValue, extraOutputs) {
     const inputs = utxos.map(u => ({
         txid: hexToBytes(u.txid).reverse(),
         vout: u.vout,
@@ -1776,6 +1776,11 @@ function buildSignedTaprootScriptpathSweepTx(backupPrivkeyBytes, backupPubkeyX,
 
     const destSpk = _addressToScriptpubkey(destAddress);
     const outputs = [{ value: destValue, scriptPubKey: destSpk }];
+    if (extraOutputs) {
+        for (const eo of extraOutputs) {
+            outputs.push({ value: eo.value, scriptPubKey: _addressToScriptpubkey(eo.address) });
+        }
+    }
 
     // The tapscript: <backup_pubkey> OP_CHECKSIG
     const leafScript = concatBytes(new Uint8Array([0x20]), backupPubkeyX, new Uint8Array([0xAC]));

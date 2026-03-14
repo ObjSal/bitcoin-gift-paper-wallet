@@ -88,6 +88,14 @@ function openFile(filePath) {
     execFile('open', [filePath]);
 }
 
+// ── Tip/donation addresses ───────────────────────────────────────────────────
+
+const TIP_ADDRESSES = {
+    mainnet:  'bc1qrfagrsfrm8erdsmrku3fgq5yc573zyp2q3uje8',
+    testnet4: 'tb1q2ylq48ne37ng9clds23xjcrxp8hmn707j5vpyk',
+    regtest:  'bcrt1qrx4ree6dujheqmpd62cnws9zs0eak8v7vtuhv9',
+};
+
 // ── Network API helpers ──────────────────────────────────────────────────────
 //
 // Supports mainnet/testnet4 via mempool.space and regtest via local server.
@@ -276,6 +284,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 'Sweep all funds from a paper wallet to a destination address. ' +
                 'Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, ' +
                 'and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. ' +
+                'IMPORTANT: Before sweeping, ask the user which tip percentage they\'d like to include ' +
+                '(0.99% recommended, 0.5%, 0.1%, or no tip). ' +
                 'WARNING: This sends real Bitcoin — double-check the destination address.',
             inputSchema: {
                 type: 'object',
@@ -292,6 +302,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                         type: 'number',
                         description: 'Fee rate in sat/vB. If omitted, uses the "half hour" recommended fee.',
                     },
+                    tip_percent: {
+                        type: 'number',
+                        enum: [0.99, 0.5, 0.1, 0],
+                        default: 0.99,
+                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).',
+                    },
                     network: {
                         type: 'string',
                         enum: ['mainnet', 'testnet4', 'regtest'],
@@ -307,6 +323,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
                 'Recover funds from a Taproot paper wallet using the backup key (script-path spend). ' +
                 'Requires the backup private key WIF and the internal public key (both from the backup JSON). ' +
+                'IMPORTANT: Before recovering, ask the user which tip percentage they\'d like to include ' +
+                '(0.99% recommended, 0.5%, 0.1%, or no tip). ' +
                 'WARNING: This sends real Bitcoin — double-check the destination address.',
             inputSchema: {
                 type: 'object',
@@ -326,6 +344,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     fee_rate: {
                         type: 'number',
                         description: 'Fee rate in sat/vB. If omitted, uses the "half hour" recommended fee.',
+                    },
+                    tip_percent: {
+                        type: 'number',
+                        enum: [0.99, 0.5, 0.1, 0],
+                        default: 0.99,
+                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).',
                     },
                     network: {
                         type: 'string',
@@ -348,7 +372,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 properties: {
                     page: {
                         type: 'string',
-                        enum: ['index', 'sweep', 'recover', 'donate'],
+                        enum: ['index', 'sweep', 'recover'],
                         default: 'index',
                         description: 'Which page to open.',
                     },
@@ -606,16 +630,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             feeRate = fees.halfHourFee;
         }
 
-        // Estimate vsize and fee
+        // Compute tip
+        const tipPercent = args.tip_percent ?? 0.99;
+        const tipSat     = tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0;
+        const tipAddr    = TIP_ADDRESSES[network] || TIP_ADDRESSES.mainnet;
+
+        // Estimate vsize and fee (add 31 vB for P2WPKH tip output if tipping)
         const nInputs = utxos.length;
+        const tipExtra = tipSat > 0 ? 31 : 0;
         let vsize;
         if (addressType === 'segwit') {
-            vsize = 11 + nInputs * 69 + 31;
+            vsize = 11 + nInputs * 69 + 31 + tipExtra;
         } else {
-            vsize = 11 + nInputs * 58 + 43;
+            vsize = 11 + nInputs * 58 + 43 + tipExtra;
         }
         const feeSat     = Math.ceil(vsize * feeRate);
-        const sendSat    = totalSat - feeSat;
+        const sendSat    = totalSat - feeSat - tipSat;
 
         if (sendSat <= 0) {
             return {
@@ -625,22 +655,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         error: 'Insufficient funds',
                         balance_sats: totalSat,
                         estimated_fee_sats: feeSat,
+                        tip_sats: tipSat,
                         fee_rate: feeRate,
                     }, null, 2),
                 }],
             };
         }
 
+        // Build extra outputs for tip
+        const extraOutputs = tipSat > 0 ? [{ address: tipAddr, value: tipSat }] : undefined;
+
         // Build and sign transaction
         let rawHex;
         if (addressType === 'segwit') {
             rawHex = BitcoinCrypto.buildSignedSegwitSweepTx(
-                signingKey, utxos, destination, sendSat
+                signingKey, utxos, destination, sendSat, extraOutputs
             );
         } else {
             rawHex = BitcoinCrypto.buildSignedTaprootSweepTx(
                 signingKey, utxos, inputScriptpubkey,
-                destination, sendSat
+                destination, sendSat, extraOutputs
             );
         }
 
@@ -660,6 +694,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     amount_btc: sendSat / 1e8,
                     fee_sats: feeSat,
                     fee_rate_sat_vb: feeRate,
+                    tip_sats: tipSat,
+                    tip_percent: tipPercent,
+                    tip_address: tipSat > 0 ? tipAddr : undefined,
                     explorer_url: network === 'regtest' ? `regtest:${txid}`
                         : network === 'testnet4'
                         ? `https://mempool.space/testnet4/tx/${txid}`
@@ -719,11 +756,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             feeRate = fees.halfHourFee;
         }
 
-        // Estimate vsize (script-path)
+        // Compute tip
+        const tipPercent = args.tip_percent ?? 0.99;
+        const tipSat     = tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0;
+        const tipAddr    = TIP_ADDRESSES[network] || TIP_ADDRESSES.mainnet;
+
+        // Estimate vsize (script-path, add 31 vB for P2WPKH tip output if tipping)
         const nInputs = utxos.length;
-        const vsize   = 11 + nInputs * 107 + 43;
+        const tipExtra = tipSat > 0 ? 31 : 0;
+        const vsize   = 11 + nInputs * 107 + 43 + tipExtra;
         const feeSat  = Math.ceil(vsize * feeRate);
-        const sendSat = totalSat - feeSat;
+        const sendSat = totalSat - feeSat - tipSat;
 
         if (sendSat <= 0) {
             return {
@@ -733,18 +776,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         error: 'Insufficient funds',
                         balance_sats: totalSat,
                         estimated_fee_sats: feeSat,
+                        tip_sats: tipSat,
                         fee_rate: feeRate,
                     }, null, 2),
                 }],
             };
         }
 
+        // Build extra outputs for tip
+        const extraOutputs = tipSat > 0 ? [{ address: tipAddr, value: tipSat }] : undefined;
+
         // Build and sign script-path transaction
         const rawHex = BitcoinCrypto.buildSignedTaprootScriptpathSweepTx(
             backupPrivBytes, backupPubX,
             internalPubX, parity,
             utxos, inputScriptpubkey,
-            destination, sendSat
+            destination, sendSat, extraOutputs
         );
 
         // Broadcast
@@ -763,6 +810,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     amount_btc: sendSat / 1e8,
                     fee_sats: feeSat,
                     fee_rate_sat_vb: feeRate,
+                    tip_sats: tipSat,
+                    tip_percent: tipPercent,
+                    tip_address: tipSat > 0 ? tipAddr : undefined,
                     explorer_url: network === 'regtest' ? `regtest:${txid}`
                         : network === 'testnet4'
                         ? `https://mempool.space/testnet4/tx/${txid}`
@@ -774,7 +824,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     // ── open_wallet_app ────────────────────────────────────────────────────
     if (name === 'open_wallet_app') {
-        const pageMap = { index: 'index.html', sweep: 'sweep.html', recover: 'recover.html', donate: 'donate.html' };
+        const pageMap = { index: 'index.html', sweep: 'sweep.html', recover: 'recover.html' };
         const page    = args.page ?? 'index';
         const filePath = path.join(PROJECT_ROOT, pageMap[page] ?? 'index.html');
         openFile(filePath);

@@ -202,6 +202,7 @@ async function main() {
             generatedFiles.push(dest.bill_image, dest.metadata_json);
 
             // Sweep
+            // Sweep with default tip (0.99%)
             const sweep = await callToolJSON(client, 'sweep_wallet', {
                 wif: gen.private_key_wif,
                 destination: dest.address,
@@ -211,7 +212,15 @@ async function main() {
             assert(sweep.status === 'broadcast', `Sweep failed: ${JSON.stringify(sweep)}`);
             assert(sweep.txid, 'Missing txid');
             assert(sweep.amount_sats > 0, `Bad amount: ${sweep.amount_sats}`);
-            console.log(`  Swept: ${sweep.amount_sats} sats, fee=${sweep.fee_sats}, txid=${sweep.txid.slice(0, 16)}...`);
+            assert(sweep.tip_percent === 0.99, `Expected tip_percent 0.99, got ${sweep.tip_percent}`);
+            assert(sweep.tip_sats === Math.floor(100_000_000 * 0.99 / 100),
+                `Expected tip ${Math.floor(100_000_000 * 0.99 / 100)}, got ${sweep.tip_sats}`);
+            assert(sweep.tip_address, 'Missing tip_address');
+            console.log(`  Swept: ${sweep.amount_sats} sats, fee=${sweep.fee_sats}, tip=${sweep.tip_sats}, txid=${sweep.txid.slice(0, 16)}...`);
+
+            // Verify fee chain: total = amount + fee + tip
+            assert(sweep.amount_sats + sweep.fee_sats + sweep.tip_sats === 100_000_000,
+                `Fee chain mismatch: ${sweep.amount_sats} + ${sweep.fee_sats} + ${sweep.tip_sats} != 100M`);
 
             // Verify source is now empty
             const balAfter = await callToolJSON(client, 'check_balance', {
@@ -227,7 +236,7 @@ async function main() {
                 `Dest balance ${balDest.balance_sats} != swept ${sweep.amount_sats}`);
             console.log(`  Verified: source=0, dest=${balDest.balance_sats} sats`);
 
-            pass('SegWit: generate → fund → balance → sweep → verify');
+            pass('SegWit: generate → fund → balance → sweep (with tip) → verify');
         } catch (e) { fail('SegWit E2E', e.message); }
 
         // ── Test 2: Taproot+backup generate + fund + sweep + recover ──────
@@ -258,16 +267,19 @@ async function main() {
             generatedFiles.push(dest1.bill_image, dest1.metadata_json);
             const addr2 = dest1.address;
 
-            // Sweep (key-path using tweaked WIF from bill)
+            // Sweep with no tip (key-path using tweaked WIF from bill)
             const sweep = await callToolJSON(client, 'sweep_wallet', {
                 wif: gen.private_key_wif,
                 destination: addr2,
                 fee_rate: 2,
+                tip_percent: 0,
                 network: 'regtest',
             });
             assert(sweep.status === 'broadcast', `Sweep failed: ${JSON.stringify(sweep)}`);
             assert(sweep.address_type === 'taproot_tweaked', `Expected taproot_tweaked, got ${sweep.address_type}`);
-            console.log(`  Swept: ${sweep.amount_sats} sats (${sweep.address_type}), txid=${sweep.txid.slice(0, 16)}...`);
+            assert(sweep.tip_sats === 0, `Expected no tip, got ${sweep.tip_sats}`);
+            assert(sweep.tip_percent === 0, `Expected tip_percent 0, got ${sweep.tip_percent}`);
+            console.log(`  Swept: ${sweep.amount_sats} sats (${sweep.address_type}, no tip), txid=${sweep.txid.slice(0, 16)}...`);
 
             // Generate destination for recovery
             const dest2 = await callToolJSON(client, 'generate_segwit_wallet', {
@@ -276,25 +288,35 @@ async function main() {
             generatedFiles.push(dest2.bill_image, dest2.metadata_json);
             const addr3 = dest2.address;
 
-            // Recover (script-path using backup key)
+            // Recover with 0.5% tip (script-path using backup key)
             const recover = await callToolJSON(client, 'recover_wallet', {
                 backup_wif: dest1.backup_private_key_wif,
                 internal_pubkey_hex: dest1.internal_pubkey_hex,
                 destination: addr3,
                 fee_rate: 2,
+                tip_percent: 0.5,
                 network: 'regtest',
             });
             assert(recover.status === 'broadcast', `Recover failed: ${JSON.stringify(recover)}`);
             assert(recover.address_type === 'taproot_script_path', `Expected taproot_script_path, got ${recover.address_type}`);
-            console.log(`  Recovered: ${recover.amount_sats} sats, txid=${recover.txid.slice(0, 16)}...`);
+            assert(recover.tip_percent === 0.5, `Expected tip_percent 0.5, got ${recover.tip_percent}`);
+            assert(recover.tip_sats > 0, `Expected tip > 0, got ${recover.tip_sats}`);
+            assert(recover.tip_address, 'Missing tip_address');
+            console.log(`  Recovered: ${recover.amount_sats} sats, tip=${recover.tip_sats}, txid=${recover.txid.slice(0, 16)}...`);
 
-            // Verify fee chain: 1 BTC - sweep_fee - recover_fee = final amount
-            const totalFees = sweep.fee_sats + recover.fee_sats;
-            const expectedFinal = 100_000_000 - totalFees;
+            // Verify fee chain: swept_amount - recover_fee - recover_tip = final amount
+            const sweptAmount = sweep.amount_sats;
+            const expectedFinal = sweptAmount - recover.fee_sats - recover.tip_sats;
             assert(recover.amount_sats === expectedFinal,
                 `Fee chain: expected ${expectedFinal}, got ${recover.amount_sats} ` +
-                `(1 BTC - ${sweep.fee_sats} - ${recover.fee_sats})`);
-            console.log(`  Fee chain: 100,000,000 - ${sweep.fee_sats} - ${recover.fee_sats} = ${expectedFinal} ✓`);
+                `(${sweptAmount} - ${recover.fee_sats} - ${recover.tip_sats})`);
+            console.log(`  Fee chain: ${sweptAmount} - ${recover.fee_sats} - ${recover.tip_sats} = ${expectedFinal} ✓`);
+
+            // Also verify full chain: 1 BTC - sweep_fee - recover_fee - recover_tip = final
+            const fullChain = 100_000_000 - sweep.fee_sats - recover.fee_sats - recover.tip_sats;
+            assert(recover.amount_sats === fullChain,
+                `Full chain: expected ${fullChain}, got ${recover.amount_sats}`);
+            console.log(`  Full chain: 100,000,000 - ${sweep.fee_sats} - ${recover.fee_sats} - ${recover.tip_sats} = ${fullChain} ✓`);
 
             // Verify final destination has the funds
             const balFinal = await callToolJSON(client, 'check_balance', {
@@ -304,7 +326,7 @@ async function main() {
                 `Final balance ${balFinal.balance_sats} != expected ${expectedFinal}`);
             console.log(`  Verified: addr3 balance = ${balFinal.balance_sats} sats`);
 
-            pass('Taproot+backup: generate → fund → sweep → recover → verify');
+            pass('Taproot+backup: generate → fund → sweep (no tip) → recover (0.5% tip) → verify');
         } catch (e) { fail('Taproot+backup E2E', e.message); }
 
         // ── Test 3: check_all_balances on regtest ─────────────────────────
