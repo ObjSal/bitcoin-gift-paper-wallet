@@ -1,0 +1,46 @@
+{
+  "manifest_version": "0.2",
+  "name": "bitcoin-gift-wallet",
+  "version": "1.0.0",
+  "display_name": "Bitcoin Gift Wallet",
+  "description": "Generate Bitcoin paper wallets with QR codes and printable bill images. SegWit and Taproot supported. All keys generated locally — nothing leaves your machine.",
+  "author": {
+    "name": "ObjSal"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ObjSal/bitcoin-gift-wallet.git"
+  },
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {}
+    }
+  },
+  "tools": [
+    {
+      "name": "generate_segwit_wallet",
+      "description": "Generate a Bitcoin SegWit (P2WPKH, bc1q...) paper wallet bill image"
+    },
+    {
+      "name": "generate_taproot_wallet",
+      "description": "Generate a Bitcoin Taproot (P2TR, bc1p...) paper wallet bill image, with optional backup key"
+    },
+    {
+      "name": "open_wallet_app",
+      "description": "Open the Bitcoin Gift Wallet web app in the browser"
+    },
+    {
+      "name": "list_generated_wallets",
+      "description": "List previously generated wallet bill images"
+    },
+    {
+      "name": "open_wallet_bill",
+      "description": "Open a previously generated wallet bill image"
+    }
+  ]
+}

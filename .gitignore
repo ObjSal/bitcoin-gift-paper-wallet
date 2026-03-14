@@ -26,6 +26,13 @@ test-screenshots/
 *.swo
 *~
 
+# Node.js (MCP server)
+node_modules/
+*.mcpb
+
+# Generated output
+generated-bills/
+
 # OS
 .DS_Store
 Thumbs.db
