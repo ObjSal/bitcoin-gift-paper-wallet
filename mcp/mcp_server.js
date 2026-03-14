@@ -76,19 +76,58 @@ async function saveBill(address, wif, addressType, isTweaked, network, walletDat
 
     fs.writeFileSync(outPath, canvas.toBuffer('image/png'));
 
-    // Save companion JSON only when walletData is provided (i.e. backup key present)
-    let jsonPath = null;
-    if (walletData) {
-        jsonPath = outPath.replace(/\.png$/, '.json');
-        const backup = Object.assign({ generated_at: new Date().toISOString() }, walletData);
-        fs.writeFileSync(jsonPath, JSON.stringify(backup, null, 2));
-    }
+    // Always save companion JSON with wallet metadata
+    const jsonPath = outPath.replace(/\.png$/, '.json');
+    const metadata = Object.assign({ generated_at: new Date().toISOString() }, walletData);
+    fs.writeFileSync(jsonPath, JSON.stringify(metadata, null, 2));
 
     return { billPath: outPath, jsonPath };
 }
 
 function openFile(filePath) {
     execFile('open', [filePath]);
+}
+
+// ── Mempool.space API helpers ─────────────────────────────────────────────────
+
+function mempoolBaseUrl(network) {
+    if (network === 'testnet4') return 'https://mempool.space/testnet4/api';
+    return 'https://mempool.space/api';
+}
+
+async function fetchUtxos(address, network) {
+    const url = `${mempoolBaseUrl(network)}/address/${address}/utxo`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30000) });
+    if (!resp.ok) throw new Error(`UTXO fetch failed (${resp.status}): ${await resp.text()}`);
+    const utxos = await resp.json();
+    return utxos.map(u => ({ txid: u.txid, vout: u.vout, value_sat: u.value }));
+}
+
+async function broadcastTx(rawHex, network) {
+    const url = `${mempoolBaseUrl(network)}/tx`;
+    const resp = await fetch(url, {
+        method: 'POST',
+        body: rawHex,
+        headers: { 'Content-Type': 'text/plain' },
+        signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) throw new Error(`Broadcast failed (${resp.status}): ${await resp.text()}`);
+    return await resp.text(); // txid
+}
+
+async function fetchFeeRates(network) {
+    const url = `${mempoolBaseUrl(network)}/v1/fees/recommended`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) throw new Error(`Fee fetch failed (${resp.status})`);
+    return await resp.json();
+}
+
+function hexToBytes(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
 }
 
 // ── MCP server ────────────────────────────────────────────────────────────────
@@ -155,6 +194,112 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                         description: 'Automatically open the bill PNG in Preview.',
                     },
                 },
+            },
+        },
+        {
+            name: 'check_balance',
+            description:
+                'Check the Bitcoin balance of an address. ' +
+                'Fetches UTXOs from mempool.space and returns the total balance in BTC and satoshis.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    address: {
+                        type: 'string',
+                        description: 'Bitcoin address to check (bc1q..., bc1p..., tb1q..., tb1p...).',
+                    },
+                    network: {
+                        type: 'string',
+                        enum: ['mainnet', 'testnet4'],
+                        default: 'mainnet',
+                        description: 'Bitcoin network.',
+                    },
+                },
+                required: ['address'],
+            },
+        },
+        {
+            name: 'check_all_balances',
+            description:
+                'Check balances of all previously generated wallets. ' +
+                'Reads wallet metadata from generated-bills/ and fetches each balance from mempool.space. ' +
+                'Use this when the user asks "how much bitcoin do I have?" or similar.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    network: {
+                        type: 'string',
+                        enum: ['mainnet', 'testnet4'],
+                        description: 'Only check wallets on this network. If omitted, checks all.',
+                    },
+                },
+            },
+        },
+        {
+            name: 'sweep_wallet',
+            description:
+                'Sweep all funds from a paper wallet to a destination address. ' +
+                'Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, ' +
+                'and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. ' +
+                'WARNING: This sends real Bitcoin — double-check the destination address.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    wif: {
+                        type: 'string',
+                        description: 'Private key in WIF format (from the paper wallet bill).',
+                    },
+                    destination: {
+                        type: 'string',
+                        description: 'Destination Bitcoin address to send funds to.',
+                    },
+                    fee_rate: {
+                        type: 'number',
+                        description: 'Fee rate in sat/vB. If omitted, uses the "half hour" recommended fee.',
+                    },
+                    network: {
+                        type: 'string',
+                        enum: ['mainnet', 'testnet4'],
+                        default: 'mainnet',
+                        description: 'Bitcoin network.',
+                    },
+                },
+                required: ['wif', 'destination'],
+            },
+        },
+        {
+            name: 'recover_wallet',
+            description:
+                'Recover funds from a Taproot paper wallet using the backup key (script-path spend). ' +
+                'Requires the backup private key WIF and the internal public key (both from the backup JSON). ' +
+                'WARNING: This sends real Bitcoin — double-check the destination address.',
+            inputSchema: {
+                type: 'object',
+                properties: {
+                    backup_wif: {
+                        type: 'string',
+                        description: 'Backup private key in WIF format (from the backup JSON).',
+                    },
+                    internal_pubkey_hex: {
+                        type: 'string',
+                        description: 'Internal public key as 64-char hex string (from the backup JSON).',
+                    },
+                    destination: {
+                        type: 'string',
+                        description: 'Destination Bitcoin address to send recovered funds to.',
+                    },
+                    fee_rate: {
+                        type: 'number',
+                        description: 'Fee rate in sat/vB. If omitted, uses the "half hour" recommended fee.',
+                    },
+                    network: {
+                        type: 'string',
+                        enum: ['mainnet', 'testnet4'],
+                        default: 'mainnet',
+                        description: 'Bitcoin network.',
+                    },
+                },
+                required: ['backup_wif', 'internal_pubkey_hex', 'destination'],
             },
         },
         {
@@ -226,7 +371,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             private_key_wif: wallet.private_key_wif,
             public_key_hex:  wallet.public_key_hex,
         };
-        const { billPath } = await saveBill(wallet.address, wallet.private_key_wif, 'segwit', false, network, null);
+        const { billPath, jsonPath } = await saveBill(wallet.address, wallet.private_key_wif, 'segwit', false, network, walletData);
 
         if (openPreview) openFile(billPath);
 
@@ -236,6 +381,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 text: JSON.stringify({
                     ...walletData,
                     bill_image: billPath,
+                    metadata_json: jsonPath,
                     note: 'Bill opened in Preview. Fund the address, fold, and gift. Keep the WIF secret until the recipient is ready to sweep.',
                 }, null, 2),
             }],
@@ -264,20 +410,319 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 script_tree_hash:       wallet.script_tree_hash,
             }),
         };
-        const { billPath, jsonPath } = await saveBill(wallet.address, wallet.private_key_wif, 'taproot', backupKey, network, backupKey ? walletData : null);
+        const { billPath, jsonPath } = await saveBill(wallet.address, wallet.private_key_wif, 'taproot', backupKey, network, walletData);
 
         if (openPreview) openFile(billPath);
 
         const result = {
             ...walletData,
             bill_image: billPath,
-            ...(backupKey && { backup_json: jsonPath }),
+            metadata_json: jsonPath,
             note: backupKey
                 ? 'Bill and backup JSON saved. The JSON contains the backup WIF — store it securely, it is needed for script-path recovery.'
                 : 'Bill opened in Preview. Fund the address, fold, and gift.',
         };
 
         return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    }
+
+    // ── check_balance ──────────────────────────────────────────────────────
+    if (name === 'check_balance') {
+        const address = args.address;
+        const network = args.network ?? 'mainnet';
+
+        const utxos    = await fetchUtxos(address, network);
+        const totalSat = utxos.reduce((sum, u) => sum + u.value_sat, 0);
+        const totalBtc = totalSat / 1e8;
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    address,
+                    network,
+                    balance_btc: totalBtc,
+                    balance_sats: totalSat,
+                    utxo_count: utxos.length,
+                    utxos,
+                }, null, 2),
+            }],
+        };
+    }
+
+    // ── check_all_balances ─────────────────────────────────────────────────
+    if (name === 'check_all_balances') {
+        const filterNetwork = args.network ?? null;
+        const allFiles = fs.readdirSync(BILLS_DIR);
+        const jsons    = allFiles.filter(f => f.endsWith('.json')).sort().reverse();
+
+        const wallets = [];
+        let grandTotalSat = 0;
+
+        for (const jsonFile of jsons) {
+            try {
+                const data = JSON.parse(fs.readFileSync(path.join(BILLS_DIR, jsonFile), 'utf8'));
+                if (!data.address || !data.network) continue;
+                if (filterNetwork && data.network !== filterNetwork) continue;
+
+                const utxos    = await fetchUtxos(data.address, data.network);
+                const totalSat = utxos.reduce((sum, u) => sum + u.value_sat, 0);
+                grandTotalSat += totalSat;
+
+                wallets.push({
+                    file: jsonFile,
+                    type: data.type,
+                    network: data.network,
+                    address: data.address,
+                    balance_btc: totalSat / 1e8,
+                    balance_sats: totalSat,
+                    utxo_count: utxos.length,
+                });
+            } catch (_) { /* skip unreadable files */ }
+        }
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    total_wallets: wallets.length,
+                    total_balance_btc: grandTotalSat / 1e8,
+                    total_balance_sats: grandTotalSat,
+                    wallets,
+                }, null, 2),
+            }],
+        };
+    }
+
+    // ── sweep_wallet ───────────────────────────────────────────────────────
+    if (name === 'sweep_wallet') {
+        const wifStr      = args.wif;
+        const destination = args.destination;
+        const network     = args.network ?? 'mainnet';
+
+        // Decode WIF to get raw private key
+        const decoded = BitcoinCrypto.wifToPrivateKey(wifStr);
+        const privkeyBytes = decoded.privateKey;
+
+        // Determine address type by trying SegWit first, then Taproot
+        // SegWit: derive pubkey → hash160 → P2WPKH address
+        const segwit = BitcoinCrypto.deriveSegwitAddressFromPrivkey(privkeyBytes, network);
+
+        // Taproot tweaked: derive output key directly from tweaked privkey
+        const taprootTweaked = BitcoinCrypto.deriveTaprootAddressFromTweakedPrivkey(privkeyBytes, network);
+
+        // Taproot untweaked (BIP86): tweak with null merkle root then derive
+        const tweakedKey = BitcoinCrypto.taprootTweakSeckey(privkeyBytes, null);
+        const taprootUntweaked = BitcoinCrypto.deriveTaprootAddressFromTweakedPrivkey(tweakedKey, network);
+
+        // Fetch UTXOs for each possible address to find which one has funds
+        let address, addressType, signingKey, inputScriptpubkey;
+
+        for (const candidate of [
+            { addr: segwit.address, type: 'segwit', key: privkeyBytes, sp: segwit.scriptpubkey },
+            { addr: taprootTweaked.address, type: 'taproot_tweaked', key: privkeyBytes, sp: taprootTweaked.scriptpubkey },
+            { addr: taprootUntweaked.address, type: 'taproot_untweaked', key: tweakedKey, sp: taprootUntweaked.scriptpubkey },
+        ]) {
+            const utxos = await fetchUtxos(candidate.addr, network);
+            if (utxos.length > 0) {
+                address = candidate.addr;
+                addressType = candidate.type;
+                signingKey = candidate.key;
+                inputScriptpubkey = candidate.sp;
+                break;
+            }
+        }
+
+        if (!address) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: 'No funds found',
+                        checked_addresses: {
+                            segwit: segwit.address,
+                            taproot_tweaked: taprootTweaked.address,
+                            taproot_untweaked: taprootUntweaked.address,
+                        },
+                        note: 'None of the derived addresses have any UTXOs.',
+                    }, null, 2),
+                }],
+            };
+        }
+
+        // Re-fetch UTXOs for the address with funds
+        const utxos    = await fetchUtxos(address, network);
+        const totalSat = utxos.reduce((sum, u) => sum + u.value_sat, 0);
+
+        // Get fee rate
+        let feeRate = args.fee_rate;
+        if (!feeRate) {
+            const fees = await fetchFeeRates(network);
+            feeRate = fees.halfHourFee;
+        }
+
+        // Estimate vsize and fee
+        const nInputs = utxos.length;
+        let vsize;
+        if (addressType === 'segwit') {
+            vsize = 11 + nInputs * 69 + 31;
+        } else {
+            vsize = 11 + nInputs * 58 + 43;
+        }
+        const feeSat     = Math.ceil(vsize * feeRate);
+        const sendSat    = totalSat - feeSat;
+
+        if (sendSat <= 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: 'Insufficient funds',
+                        balance_sats: totalSat,
+                        estimated_fee_sats: feeSat,
+                        fee_rate: feeRate,
+                    }, null, 2),
+                }],
+            };
+        }
+
+        // Build and sign transaction
+        let rawHex;
+        if (addressType === 'segwit') {
+            rawHex = BitcoinCrypto.buildSignedSegwitSweepTx(
+                signingKey, utxos, destination, sendSat
+            );
+        } else {
+            rawHex = BitcoinCrypto.buildSignedTaprootSweepTx(
+                signingKey, utxos, inputScriptpubkey,
+                destination, sendSat
+            );
+        }
+
+        // Broadcast
+        const txid = await broadcastTx(rawHex, network);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    status: 'broadcast',
+                    txid,
+                    from_address: address,
+                    address_type: addressType,
+                    to_address: destination,
+                    amount_sats: sendSat,
+                    amount_btc: sendSat / 1e8,
+                    fee_sats: feeSat,
+                    fee_rate_sat_vb: feeRate,
+                    explorer_url: network === 'testnet4'
+                        ? `https://mempool.space/testnet4/tx/${txid}`
+                        : `https://mempool.space/tx/${txid}`,
+                }, null, 2),
+            }],
+        };
+    }
+
+    // ── recover_wallet ─────────────────────────────────────────────────────
+    if (name === 'recover_wallet') {
+        const backupWif        = args.backup_wif;
+        const internalPubHex   = args.internal_pubkey_hex;
+        const destination      = args.destination;
+        const network          = args.network ?? 'mainnet';
+
+        // Decode backup WIF
+        const decoded          = BitcoinCrypto.wifToPrivateKey(backupWif);
+        const backupPrivBytes  = decoded.privateKey;
+
+        // Derive backup public key (x-only)
+        const { xOnly: backupPubX } = BitcoinCrypto.privateKeyToXonlyPubkey(backupPrivBytes);
+
+        // Parse internal pubkey
+        const internalPubX     = hexToBytes(internalPubHex);
+
+        // Compute script tree hash and tweaked output key
+        const scriptTreeHash   = BitcoinCrypto.computeScriptTreeHashForBackup(backupPubX);
+        const { outputKeyX, parity } = BitcoinCrypto.taprootTweakPubkey(internalPubX, scriptTreeHash);
+
+        // Derive the address
+        const hrp = network === 'testnet4' ? 'tb' : 'bc';
+        const address = BitcoinCrypto.bech32Encode(hrp, 1, Array.from(outputKeyX), 'bech32m');
+        const inputScriptpubkey = BitcoinCrypto._addressToScriptpubkey(address);
+
+        // Fetch UTXOs
+        const utxos    = await fetchUtxos(address, network);
+        const totalSat = utxos.reduce((sum, u) => sum + u.value_sat, 0);
+
+        if (utxos.length === 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: 'No funds found',
+                        address,
+                        note: 'The reconstructed address has no UTXOs.',
+                    }, null, 2),
+                }],
+            };
+        }
+
+        // Get fee rate
+        let feeRate = args.fee_rate;
+        if (!feeRate) {
+            const fees = await fetchFeeRates(network);
+            feeRate = fees.halfHourFee;
+        }
+
+        // Estimate vsize (script-path)
+        const nInputs = utxos.length;
+        const vsize   = 11 + nInputs * 107 + 43;
+        const feeSat  = Math.ceil(vsize * feeRate);
+        const sendSat = totalSat - feeSat;
+
+        if (sendSat <= 0) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify({
+                        error: 'Insufficient funds',
+                        balance_sats: totalSat,
+                        estimated_fee_sats: feeSat,
+                        fee_rate: feeRate,
+                    }, null, 2),
+                }],
+            };
+        }
+
+        // Build and sign script-path transaction
+        const rawHex = BitcoinCrypto.buildSignedTaprootScriptpathSweepTx(
+            backupPrivBytes, backupPubX,
+            internalPubX, parity,
+            utxos, inputScriptpubkey,
+            destination, sendSat
+        );
+
+        // Broadcast
+        const txid = await broadcastTx(rawHex, network);
+
+        return {
+            content: [{
+                type: 'text',
+                text: JSON.stringify({
+                    status: 'broadcast',
+                    txid,
+                    from_address: address,
+                    address_type: 'taproot_script_path',
+                    to_address: destination,
+                    amount_sats: sendSat,
+                    amount_btc: sendSat / 1e8,
+                    fee_sats: feeSat,
+                    fee_rate_sat_vb: feeRate,
+                    explorer_url: network === 'testnet4'
+                        ? `https://mempool.space/testnet4/tx/${txid}`
+                        : `https://mempool.space/tx/${txid}`,
+                }, null, 2),
+            }],
+        };
     }
 
     // ── open_wallet_app ────────────────────────────────────────────────────
@@ -302,14 +747,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // ── list_generated_wallets ─────────────────────────────────────────────
     if (name === 'list_generated_wallets') {
         const allFiles = fs.readdirSync(BILLS_DIR).sort().reverse();
-        const pngs     = allFiles.filter(f => f.endsWith('.png'));
-        const wallets  = pngs.map(png => {
-            const base = png.replace(/\.png$/, '');
-            const json = base + '.json';
-            return {
-                bill: png,
-                backup_json: allFiles.includes(json) ? json : null,
-            };
+        const jsons    = allFiles.filter(f => f.endsWith('.json'));
+        const wallets  = jsons.map(jsonFile => {
+            try {
+                const data = JSON.parse(fs.readFileSync(path.join(BILLS_DIR, jsonFile), 'utf8'));
+                const bill = jsonFile.replace(/\.json$/, '.png');
+                return {
+                    bill: allFiles.includes(bill) ? bill : null,
+                    metadata_json: jsonFile,
+                    type: data.type || null,
+                    network: data.network || null,
+                    address: data.address || null,
+                    has_backup_key: data.has_backup_key || false,
+                };
+            } catch (_) {
+                return { metadata_json: jsonFile };
+            }
         });
 
         if (args.open_folder) openFile(BILLS_DIR);

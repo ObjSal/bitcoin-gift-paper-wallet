@@ -2,7 +2,7 @@
 """
 Tests for the Python MCP server.
 
-Uses the MCP SDK client to connect over stdio and exercise all 5 tools.
+Uses the MCP SDK client to connect over stdio and exercise all 9 tools.
 
 Usage:
     python3 tests/test_mcp_server.py
@@ -69,17 +69,22 @@ async def run_tests():
                 expected = {
                     "generate_segwit_wallet",
                     "generate_taproot_wallet",
+                    "check_balance",
+                    "check_all_balances",
+                    "sweep_wallet",
+                    "recover_wallet",
                     "open_wallet_app",
                     "list_generated_wallets",
                     "open_wallet_bill",
                 }
                 assert names == expected, f"Expected {expected}, got {names}"
-                pass_test("list_tools returns all 5 tools")
+                pass_test(f"list_tools returns all {len(expected)} tools")
             except Exception as e:
                 fail_test("list_tools", e)
 
             # ── test_generate_segwit_mainnet ──────────────────────────
             segwit_bill = None
+            segwit_address = None
             try:
                 r = await call_tool_json(session, "generate_segwit_wallet", {
                     "network": "mainnet", "open_preview": False,
@@ -90,9 +95,16 @@ async def run_tests():
                 assert os.path.exists(r["bill_image"]), f"Bill not found: {r['bill_image']}"
                 with open(r["bill_image"], "rb") as f:
                     assert f.read(4) == b"\x89PNG", "Not a valid PNG"
+                # Verify metadata JSON is always saved
+                assert "metadata_json" in r and os.path.exists(r["metadata_json"]), "Metadata JSON not found"
+                with open(r["metadata_json"]) as f:
+                    meta = json.load(f)
+                assert meta["address"] == r["address"], "Metadata address mismatch"
+                assert meta["network"] == "mainnet", "Metadata network mismatch"
                 segwit_bill = r["bill_image"]
-                generated_files.append(r["bill_image"])
-                pass_test("generate_segwit_wallet (mainnet)")
+                segwit_address = r["address"]
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
+                pass_test("generate_segwit_wallet (mainnet + metadata JSON)")
             except Exception as e:
                 fail_test("generate_segwit_wallet (mainnet)", e)
 
@@ -104,7 +116,8 @@ async def run_tests():
                 assert r["address"].startswith("tb1q"), f"Bad address: {r['address']}"
                 assert r["private_key_wif"].startswith("c"), f"Bad WIF: {r['private_key_wif']}"
                 assert os.path.exists(r["bill_image"])
-                generated_files.append(r["bill_image"])
+                assert "metadata_json" in r and os.path.exists(r["metadata_json"])
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
                 pass_test("generate_segwit_wallet (testnet4)")
             except Exception as e:
                 fail_test("generate_segwit_wallet (testnet4)", e)
@@ -119,8 +132,9 @@ async def run_tests():
                 assert r["has_backup_key"] is False
                 assert "backup_private_key_wif" not in r
                 assert os.path.exists(r["bill_image"])
-                generated_files.append(r["bill_image"])
-                pass_test("generate_taproot_wallet (no backup)")
+                assert "metadata_json" in r and os.path.exists(r["metadata_json"])
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
+                pass_test("generate_taproot_wallet (no backup + metadata JSON)")
             except Exception as e:
                 fail_test("generate_taproot_wallet (no backup)", e)
 
@@ -134,7 +148,11 @@ async def run_tests():
                 assert "backup_private_key_wif" in r, "Missing backup WIF"
                 assert r["backup_private_key_wif"][0] in ("K", "L"), "Bad backup WIF"
                 assert os.path.exists(r["bill_image"])
-                generated_files.append(r["bill_image"])
+                assert "metadata_json" in r and os.path.exists(r["metadata_json"])
+                with open(r["metadata_json"]) as f:
+                    meta = json.load(f)
+                assert meta["backup_private_key_wif"] == r["backup_private_key_wif"], "Metadata backup WIF mismatch"
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
                 pass_test("generate_taproot_wallet (with backup)")
             except Exception as e:
                 fail_test("generate_taproot_wallet (with backup)", e)
@@ -146,7 +164,7 @@ async def run_tests():
                 })
                 assert r["address"].startswith("tb1p"), f"Bad address: {r['address']}"
                 assert os.path.exists(r["bill_image"])
-                generated_files.append(r["bill_image"])
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
                 pass_test("generate_taproot_wallet (testnet4)")
             except Exception as e:
                 fail_test("generate_taproot_wallet (testnet4)", e)
@@ -156,18 +174,94 @@ async def run_tests():
                 r = await call_tool_json(session, "generate_segwit_wallet", {})
                 assert r["address"].startswith("bc1q"), f"Default should be mainnet: {r['address']}"
                 assert os.path.exists(r["bill_image"])
-                generated_files.append(r["bill_image"])
+                generated_files.extend([r["bill_image"], r["metadata_json"]])
                 pass_test("default parameters (empty args → mainnet segwit)")
             except Exception as e:
                 fail_test("default parameters", e)
 
+            # ── test_check_balance ────────────────────────────────────
+            if segwit_address:
+                try:
+                    r = await call_tool_json(session, "check_balance", {
+                        "address": segwit_address, "network": "mainnet",
+                    })
+                    assert r["address"] == segwit_address, "Address mismatch"
+                    assert r["network"] == "mainnet", "Network mismatch"
+                    assert isinstance(r["balance_btc"], (int, float)), "Missing balance_btc"
+                    assert isinstance(r["balance_sats"], (int, float)), "Missing balance_sats"
+                    assert isinstance(r["utxo_count"], int), "Missing utxo_count"
+                    assert isinstance(r["utxos"], list), "utxos should be list"
+                    assert r["balance_sats"] == 0, f"Fresh wallet should have 0, got {r['balance_sats']}"
+                    pass_test("check_balance (fresh wallet → 0 sats)")
+                except Exception as e:
+                    fail_test("check_balance", e)
+
+            # ── test_check_all_balances ───────────────────────────────
+            try:
+                r = await call_tool_json(session, "check_all_balances", {"network": "mainnet"})
+                assert isinstance(r["total_wallets"], int), "Missing total_wallets"
+                assert isinstance(r["total_balance_btc"], (int, float)), "Missing total_balance_btc"
+                assert isinstance(r["total_balance_sats"], (int, float)), "Missing total_balance_sats"
+                assert isinstance(r["wallets"], list), "wallets should be list"
+                assert r["total_wallets"] >= 1, "Should have at least 1 wallet"
+                w = r["wallets"][0]
+                assert w.get("address"), "Wallet missing address"
+                assert w.get("network"), "Wallet missing network"
+                assert isinstance(w.get("balance_sats"), (int, float)), "Wallet missing balance_sats"
+                pass_test(f"check_all_balances ({r['total_wallets']} mainnet wallets)")
+            except Exception as e:
+                fail_test("check_all_balances", e)
+
+            # ── test_sweep_wallet_no_funds ────────────────────────────
+            try:
+                gen = await call_tool_json(session, "generate_segwit_wallet", {
+                    "network": "mainnet", "open_preview": False,
+                })
+                generated_files.extend([gen["bill_image"], gen["metadata_json"]])
+
+                r = await call_tool_json(session, "sweep_wallet", {
+                    "wif": gen["private_key_wif"],
+                    "destination": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    "network": "mainnet",
+                })
+                assert r.get("error") == "No funds found", f"Expected 'No funds found', got: {r.get('error')}"
+                assert "checked_addresses" in r, "Missing checked_addresses"
+                pass_test("sweep_wallet (no funds → error)")
+            except Exception as e:
+                fail_test("sweep_wallet (no funds)", e)
+
+            # ── test_recover_wallet_no_funds ──────────────────────────
+            try:
+                gen = await call_tool_json(session, "generate_taproot_wallet", {
+                    "network": "mainnet", "backup_key": True, "open_preview": False,
+                })
+                generated_files.extend([gen["bill_image"], gen["metadata_json"]])
+
+                r = await call_tool_json(session, "recover_wallet", {
+                    "backup_wif": gen["backup_private_key_wif"],
+                    "internal_pubkey_hex": gen["internal_pubkey_hex"],
+                    "destination": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+                    "network": "mainnet",
+                })
+                assert r.get("error") == "No funds found", f"Expected 'No funds found', got: {r.get('error')}"
+                assert r.get("address"), "Missing reconstructed address"
+                assert r["address"] == gen["address"], f"Address mismatch: {r['address']} vs {gen['address']}"
+                pass_test("recover_wallet (no funds → error, address matches)")
+            except Exception as e:
+                fail_test("recover_wallet (no funds)", e)
+
             # ── test_list_generated_wallets ────────────────────────────
             try:
                 r = await call_tool_json(session, "list_generated_wallets", {"open_folder": False})
-                assert "count" in r, "Missing count"
+                assert isinstance(r["count"], int), "Missing count"
                 assert r["count"] >= 1, "Should have at least 1 wallet"
-                assert "wallets" in r
-                pass_test(f"list_generated_wallets ({r['count']} wallets)")
+                assert isinstance(r["wallets"], list), "wallets should be list"
+                w = r["wallets"][0]
+                assert w.get("metadata_json"), "Missing metadata_json"
+                assert w.get("address"), "Missing address in list"
+                assert w.get("type"), "Missing type in list"
+                assert w.get("network"), "Missing network in list"
+                pass_test(f"list_generated_wallets ({r['count']} wallets with metadata)")
             except Exception as e:
                 fail_test("list_generated_wallets", e)
 
@@ -208,7 +302,7 @@ async def run_tests():
                     })
                     assert r["address"] not in addresses, f"Duplicate: {r['address']}"
                     addresses.add(r["address"])
-                    generated_files.append(r["bill_image"])
+                    generated_files.extend([r["bill_image"], r["metadata_json"]])
                 pass_test("address uniqueness (5 consecutive wallets)")
             except Exception as e:
                 fail_test("address uniqueness", e)

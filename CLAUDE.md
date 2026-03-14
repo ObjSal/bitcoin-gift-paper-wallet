@@ -30,6 +30,7 @@ bitcoin-gift-wallet/
 │   ├── test_bitcoin_crypto.html, test_bitcoin.py, test_regtest_spending.py,
 │   ├── test_e2e_api.py, test_ui_playwright.py, test_ui_playwright_testnet4.py,
 │   ├── test_ui_chained.md, test_ui_chained_testnet4.md
+│   ├── test_mcp_server.js, test_mcp_server.py
 ├── docs/                        (documentation)
 │   ├── security_assessment.md, mcp_setup.md
 ├── generated-bills/             (output directory for MCP-generated bills)
@@ -67,7 +68,7 @@ Two MCP server implementations expose wallet generation as tools for Claude Desk
 - **`mcp/mcp_server.js`** — Node.js MCP server (recommended). Reuses the same JS modules as the website (`js/bitcoin_crypto.js`, `js/qr_generator.js`, `js/bill_generator.js`). Uses `@napi-rs/canvas` for Node.js Canvas API. Dependencies managed via `mcp/package.json`.
 - **`mcp/mcp_server.py`** — Python MCP server. Reuses the Python backend modules (`server/bitcoin_crypto.py`, `server/bill_generator.py`). Requires `mcp` and `Pillow` pip packages.
 
-Both servers expose 5 tools: `generate_segwit_wallet`, `generate_taproot_wallet`, `open_wallet_app`, `list_generated_wallets`, `open_wallet_bill`. Generated bills are saved to `generated-bills/` in the project root.
+Both servers expose 9 tools: `generate_segwit_wallet`, `generate_taproot_wallet`, `check_balance`, `check_all_balances`, `sweep_wallet`, `recover_wallet`, `open_wallet_app`, `list_generated_wallets`, `open_wallet_bill`. Generated bills are saved to `generated-bills/` in the project root. Metadata JSON files are always saved alongside bill PNGs (enabling `check_all_balances` and rich `list_generated_wallets` output).
 
 Setup: `cd mcp && npm install`, then add to Claude Desktop/Code config pointing to `mcp/mcp_server.js`. See `docs/mcp_setup.md` for full instructions.
 
@@ -82,6 +83,8 @@ Setup: `cd mcp && npm install`, then add to Claude Desktop/Code config pointing 
 - **`tests/test_ui_playwright_testnet4.py`** — Playwright browser UI test for testnet4.
 - **`tests/test_ui_chained.md`** — Claude Code prompt file for interactive UI testing.
 - **`tests/test_ui_chained_testnet4.md`** — Claude Code prompt file for interactive testnet4 UI testing.
+- **`tests/test_mcp_server.js`** — Node.js MCP server tests (16 tests). Uses MCP SDK client over stdio.
+- **`tests/test_mcp_server.py`** — Python MCP server tests (16 tests). Uses MCP SDK client over stdio.
 
 ### Documentation
 
@@ -244,7 +247,7 @@ Testnet4 browser-driven test: sweeps a pre-funded testnet4 address to a freshly 
 
 ## Current State
 
-**All tests pass: 120/120 JS crypto tests + 54/54 Python unit tests + 9/9 regtest spending tests + 8/8 E2E API tests + 1/1 Playwright UI test.**
+**All tests pass: 120/120 JS crypto tests + 54/54 Python unit tests + 9/9 regtest spending tests + 8/8 E2E API tests + 1/1 Playwright UI test + 16/16 Node.js MCP tests + 16/16 Python MCP tests.**
 
 The site works as a fully static site (GitHub Pages compatible) with all crypto, QR generation, and bill rendering happening client-side in JavaScript. The Python server is only needed for regtest mode.
 

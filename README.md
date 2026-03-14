@@ -135,9 +135,15 @@ python3 tests/test_ui_playwright.py
 
 # Testnet4 browser UI test (requires pre-funded testnet4 address)
 python3 tests/test_ui_playwright_testnet4.py --wif "cXXX..." --address "tb1q..."
+
+# Node.js MCP server tests (16 tests, requires npm install in mcp/)
+node tests/test_mcp_server.js
+
+# Python MCP server tests (16 tests, requires mcp + Pillow pip packages)
+python3 tests/test_mcp_server.py
 ```
 
-**Current state: 120/120 JS + 54/54 Python + 9/9 regtest + 8/8 E2E + 1/1 Playwright = all tests passing.**
+**Current state: 120/120 JS + 54/54 Python + 9/9 regtest + 8/8 E2E + 1/1 Playwright + 16/16 Node.js MCP + 16/16 Python MCP = all tests passing.**
 
 ## Security
 
@@ -215,6 +221,10 @@ See [`docs/mcp_setup.md`](docs/mcp_setup.md) for Claude Code configuration and m
 |------|-------------|
 | `generate_segwit_wallet` | Generate a SegWit (bc1q...) wallet + bill image |
 | `generate_taproot_wallet` | Generate a Taproot (bc1p...) wallet, with optional backup key |
+| `check_balance` | Check the Bitcoin balance of any address |
+| `check_all_balances` | Check balances of all generated wallets at once |
+| `sweep_wallet` | Sweep all funds from a paper wallet to a destination address |
+| `recover_wallet` | Recover funds using the backup key (Taproot script-path spend) |
 | `open_wallet_app` | Open the web app (generator, sweep, recover, donate) |
 | `list_generated_wallets` | List previously generated bill images |
 | `open_wallet_bill` | Open a specific bill by filename |
@@ -227,6 +237,9 @@ Once the MCP server is installed, try asking Claude:
 - *"Create a taproot wallet with a backup key"*
 - *"Make me a segwit gift wallet on testnet"*
 - *"Generate 3 taproot paper wallets for holiday gifts"*
+- *"How much bitcoin do I have?"*
+- *"Check the balance of bc1q..."*
+- *"Sweep my paper wallet to bc1q..."*
 - *"Show me the wallets I've already generated"*
 - *"Open the sweep page so I can send funds from a paper wallet"*
 
