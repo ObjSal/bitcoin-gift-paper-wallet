@@ -24,12 +24,15 @@ bitcoin-gift-wallet/
 │   ├── bill_template.png, donate_qr.png
 ├── server/                      (Python backend)
 │   ├── server.py, bitcoin_crypto.py, qr_generator.py, bill_generator.py
+├── mcp/                         (MCP server for Claude Desktop / Claude Code)
+│   ├── mcp_server.js, mcp_server.py, manifest.json, package.json, build.sh
 ├── tests/                       (all test files)
 │   ├── test_bitcoin_crypto.html, test_bitcoin.py, test_regtest_spending.py,
 │   ├── test_e2e_api.py, test_ui_playwright.py, test_ui_playwright_testnet4.py,
 │   ├── test_ui_chained.md, test_ui_chained_testnet4.md
 ├── docs/                        (documentation)
-│   └── security_assessment.md
+│   ├── security_assessment.md, mcp_setup.md
+├── generated-bills/             (output directory for MCP-generated bills)
 ├── README.md, CLAUDE.md, .gitignore, requirements.txt, run.sh
 ```
 
@@ -57,6 +60,19 @@ bitcoin-gift-wallet/
 - **`assets/bill_template.png`** — The bill background image (1843×784 pixels).
 - **`assets/donate_qr.png`** — QR code for the donation page.
 
+### MCP Server (Claude Desktop / Claude Code)
+
+Two MCP server implementations expose wallet generation as tools for Claude Desktop and Claude Code:
+
+- **`mcp/mcp_server.js`** — Node.js MCP server (recommended). Reuses the same JS modules as the website (`js/bitcoin_crypto.js`, `js/qr_generator.js`, `js/bill_generator.js`). Uses `@napi-rs/canvas` for Node.js Canvas API. Dependencies managed via `mcp/package.json`.
+- **`mcp/mcp_server.py`** — Python MCP server. Reuses the Python backend modules (`server/bitcoin_crypto.py`, `server/bill_generator.py`). Requires `mcp` and `Pillow` pip packages.
+
+Both servers expose 5 tools: `generate_segwit_wallet`, `generate_taproot_wallet`, `open_wallet_app`, `list_generated_wallets`, `open_wallet_bill`. Generated bills are saved to `generated-bills/` in the project root.
+
+Setup: `cd mcp && npm install`, then add to Claude Desktop/Code config pointing to `mcp/mcp_server.js`. See `docs/mcp_setup.md` for full instructions.
+
+**Building the .mcpb bundle for distribution:** Run `cd mcp && ./build.sh`. This assembles the JS modules, assets, and Node.js dependencies into a self-contained `dist/bitcoin-gift-wallet.mcpb` that users can double-click to install in Claude Desktop. The bundle is uploaded to GitHub Releases. In bundle mode, generated bills are saved to `~/bitcoin-gift-wallet/generated-bills/` instead of the project directory.
+
 ### Test Files
 
 - **`tests/test_bitcoin.py`** — Python crypto unit tests (54 tests).
@@ -70,6 +86,7 @@ bitcoin-gift-wallet/
 ### Documentation
 
 - **`docs/security_assessment.md`** — Security assessment of the cryptographic implementation.
+- **`docs/mcp_setup.md`** — MCP server setup guide for Claude Desktop and Claude Code.
 
 ## Running
 

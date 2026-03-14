@@ -19,6 +19,7 @@ Each bill includes the public address (as text + QR code) on the front and the p
 - **Gift givers** who want to give Bitcoin as a physical, tangible present
 - **Bitcoin educators** teaching people about keys, addresses, and self-custody
 - **Developers** who want a reference implementation of Bitcoin cryptography in pure JS/Python
+- **Claude users** who want to generate wallets directly from Claude Desktop or Claude Code via MCP
 - **Anyone** who needs a simple, auditable paper wallet generator with no dependencies
 
 ## Pages
@@ -156,6 +157,58 @@ A full security assessment is available in [`docs/security_assessment.md`](docs/
 - Print using a **direct USB-connected printer** (not a network printer)
 - Verify the source code before use — it's fully auditable
 
+## MCP Server (Claude Desktop / Claude Code)
+
+Generate paper wallets directly from Claude using [MCP](https://modelcontextprotocol.io/) — no browser needed. Two implementations are provided (Node.js and Python), both reusing the project's existing crypto modules.
+
+### Option 1: Download the .mcpb bundle (easiest)
+
+Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install in Claude Desktop. No Node.js, npm, or configuration required.
+
+### Option 2: Manual setup (from source)
+
+```bash
+cd mcp && npm install
+```
+
+Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "bitcoin-gift-wallet": {
+      "command": "node",
+      "args": ["/path/to/bitcoin-gift-wallet/mcp/mcp_server.js"]
+    }
+  }
+}
+```
+
+Then ask Claude: *"Generate a taproot paper wallet"* — it will create the wallet, render a bill image, and open it in Preview.
+
+See [`docs/mcp_setup.md`](docs/mcp_setup.md) for full setup instructions (including Python MCP server and Claude Code configuration).
+
+### MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `generate_segwit_wallet` | Generate a SegWit (bc1q...) wallet + bill image |
+| `generate_taproot_wallet` | Generate a Taproot (bc1p...) wallet, with optional backup key |
+| `open_wallet_app` | Open the web app (generator, sweep, recover, donate) |
+| `list_generated_wallets` | List previously generated bill images |
+| `open_wallet_bill` | Open a specific bill by filename |
+
+### Example Prompts
+
+Once the MCP server is installed, try asking Claude:
+
+- *"Generate a bitcoin paper wallet"*
+- *"Create a taproot wallet with a backup key"*
+- *"Make me a segwit gift wallet on testnet"*
+- *"Generate 3 taproot paper wallets for holiday gifts"*
+- *"Show me the wallets I've already generated"*
+- *"Open the sweep page so I can send funds from a paper wallet"*
+
 ## Project Structure
 
 ```
@@ -176,6 +229,12 @@ server/
     bitcoin_crypto.py               # Python reference implementation
     qr_generator.py                 # Python QR code generation
     bill_generator.py               # Python Pillow bill generation
+mcp/
+    mcp_server.js                   # Node.js MCP server (recommended)
+    mcp_server.py                   # Python MCP server
+    manifest.json                   # MCPB bundle manifest
+    package.json                    # Node.js dependencies
+    build.sh                        # Build .mcpb bundle for distribution
 tests/
     test_bitcoin_crypto.html        # In-browser JS test suite (120 tests)
     test_bitcoin.py                 # Python unit tests (54 tests)
@@ -185,6 +244,7 @@ tests/
     test_ui_playwright_testnet4.py  # Testnet4 Playwright test
 docs/
     security_assessment.md          # Full security assessment
+    mcp_setup.md                    # MCP server setup guide
 ```
 
 ## Support This Project
