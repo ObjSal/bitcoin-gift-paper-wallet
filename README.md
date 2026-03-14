@@ -141,9 +141,12 @@ node tests/test_mcp_server.js
 
 # Python MCP server tests (16 tests, requires mcp + Pillow pip packages)
 python3 tests/test_mcp_server.py
+
+# MCP E2E tests (5 tests, requires Bitcoin Core + npm install in mcp/)
+node tests/test_mcp_e2e.js
 ```
 
-**Current state: 120/120 JS + 54/54 Python + 9/9 regtest + 8/8 E2E + 1/1 Playwright + 16/16 Node.js MCP + 16/16 Python MCP = all tests passing.**
+**Current state: 120/120 JS + 54/54 Python + 9/9 regtest + 8/8 E2E API + 1/1 Playwright + 16/16 Node.js MCP + 16/16 Python MCP + 5/5 MCP E2E = all tests passing.**
 
 ## Security
 
@@ -223,9 +226,9 @@ See [`docs/mcp_setup.md`](docs/mcp_setup.md) for Claude Code configuration and m
 | `generate_taproot_wallet` | Generate a Taproot (bc1p...) wallet, with optional backup key |
 | `check_balance` | Check the Bitcoin balance of any address |
 | `check_all_balances` | Check balances of all generated wallets at once |
-| `sweep_wallet` | Sweep all funds from a paper wallet to a destination address |
-| `recover_wallet` | Recover funds using the backup key (Taproot script-path spend) |
-| `open_wallet_app` | Open the web app (generator, sweep, recover, donate) |
+| `sweep_wallet` | Sweep all funds from a paper wallet to a destination address (with optional tip) |
+| `recover_wallet` | Recover funds using the backup key (Taproot script-path spend, with optional tip) |
+| `open_wallet_app` | Open the web app (generator, sweep, or recover page) |
 | `list_generated_wallets` | List previously generated bill images |
 | `open_wallet_bill` | Open a specific bill by filename |
 
@@ -288,6 +291,7 @@ tests/
     test_e2e_api.py                 # End-to-end API tests (8 tests)
     test_ui_playwright.py           # Playwright browser UI test
     test_ui_playwright_testnet4.py  # Testnet4 Playwright test
+    test_mcp_e2e.js                 # MCP E2E tests with regtest (5 tests)
 docs/
     security_assessment.md          # Full security assessment
     mcp_setup.md                    # MCP server setup guide
