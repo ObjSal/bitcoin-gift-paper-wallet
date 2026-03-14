@@ -3,15 +3,11 @@
  * End-to-end MCP server tests with regtest.
  *
  * Starts a regtest bitcoind + HTTP server, then exercises the full MCP flow:
- *   generate_taproot_wallet (regtest, with backup)
- *   → fund via faucet HTTP API
- *   → check_balance (verify funded)
- *   → sweep_wallet (key-path spend)
- *   → check_balance (verify swept)
- *   → recover_wallet (script-path spend via backup key)
- *   → check_balance (verify recovered)
- *
- * Also tests generate_segwit_wallet + sweep on regtest.
+ *   Test 1: SegWit generate → fund → balance → sweep (default 0.99% tip)
+ *   Test 2: Taproot+backup generate → fund → sweep (no tip) → recover (0.5% tip)
+ *   Test 3: SegWit sweep with tip_sats (fixed 50k sats)
+ *   Test 4: Taproot recover with tip_sats (fixed 25k sats)
+ *   Test 5: check_all_balances across all regtest wallets
  *
  * Requires: Bitcoin Core (bitcoind + bitcoin-cli) in PATH, npm install in mcp/.
  *
@@ -329,10 +325,118 @@ async function main() {
             pass('Taproot+backup: generate → fund → sweep (no tip) → recover (0.5% tip) → verify');
         } catch (e) { fail('Taproot+backup E2E', e.message); }
 
-        // ── Test 3: check_all_balances on regtest ─────────────────────────
+        // ── Test 3: Sweep with tip_sats (fixed satoshi tip) ───────────────
 
         try {
-            console.log('\n--- Test 3: check_all_balances (regtest) ---');
+            console.log('\n--- Test 3: SegWit sweep with tip_sats ---');
+
+            // Generate and fund
+            const gen = await callToolJSON(client, 'generate_segwit_wallet', {
+                network: 'regtest', open_preview: false,
+            });
+            generatedFiles.push(gen.bill_image, gen.metadata_json);
+            await httpPost(`${baseUrl}/api/faucet`, { address: gen.address, amount: 0.5 });
+            console.log(`  Generated & funded: ${gen.address} (0.5 BTC)`);
+
+            // Generate destination
+            const dest = await callToolJSON(client, 'generate_segwit_wallet', {
+                network: 'regtest', open_preview: false,
+            });
+            generatedFiles.push(dest.bill_image, dest.metadata_json);
+
+            // Sweep with tip_sats = 50000 (fixed 50k sats)
+            const tipAmount = 50000;
+            const sweep = await callToolJSON(client, 'sweep_wallet', {
+                wif: gen.private_key_wif,
+                destination: dest.address,
+                fee_rate: 2,
+                tip_sats: tipAmount,
+                network: 'regtest',
+            });
+            assert(sweep.status === 'broadcast', `Sweep failed: ${JSON.stringify(sweep)}`);
+            assert(sweep.tip_sats === tipAmount,
+                `Expected tip_sats ${tipAmount}, got ${sweep.tip_sats}`);
+            assert(sweep.tip_percent === null,
+                `Expected tip_percent null when using tip_sats, got ${sweep.tip_percent}`);
+            assert(sweep.tip_address, 'Missing tip_address');
+            console.log(`  Swept: ${sweep.amount_sats} sats, fee=${sweep.fee_sats}, tip=${sweep.tip_sats} (fixed sats)`);
+
+            // Verify fee chain: 50M = amount + fee + tip
+            assert(sweep.amount_sats + sweep.fee_sats + sweep.tip_sats === 50_000_000,
+                `Fee chain: ${sweep.amount_sats} + ${sweep.fee_sats} + ${sweep.tip_sats} != 50M`);
+            console.log(`  Fee chain: ${sweep.amount_sats} + ${sweep.fee_sats} + ${sweep.tip_sats} = 50,000,000 ✓`);
+
+            // Verify tip address received exactly 50k sats
+            const tipBal = await callToolJSON(client, 'check_balance', {
+                address: sweep.tip_address, network: 'regtest',
+            });
+            // Tip address may have accumulated from Test 1, so check it has at least tipAmount
+            assert(tipBal.balance_sats >= tipAmount,
+                `Tip address balance ${tipBal.balance_sats} < expected ${tipAmount}`);
+            console.log(`  Tip address balance: ${tipBal.balance_sats} sats (includes prior tips)`);
+
+            pass('SegWit: sweep with tip_sats (fixed 50k sats)');
+        } catch (e) { fail('Sweep with tip_sats', e.message); }
+
+        // ── Test 4: Recover with tip_sats (fixed satoshi tip) ────────────
+
+        try {
+            console.log('\n--- Test 4: Taproot recover with tip_sats ---');
+
+            // Generate taproot with backup and fund
+            const gen = await callToolJSON(client, 'generate_taproot_wallet', {
+                network: 'regtest', backup_key: true, open_preview: false,
+            });
+            generatedFiles.push(gen.bill_image, gen.metadata_json);
+            await httpPost(`${baseUrl}/api/faucet`, { address: gen.address, amount: 0.5 });
+            console.log(`  Generated & funded: ${gen.address} (0.5 BTC, with backup)`);
+
+            // Generate destination
+            const dest = await callToolJSON(client, 'generate_segwit_wallet', {
+                network: 'regtest', open_preview: false,
+            });
+            generatedFiles.push(dest.bill_image, dest.metadata_json);
+
+            // Recover with tip_sats = 25000 (fixed 25k sats)
+            const tipAmount = 25000;
+            const recover = await callToolJSON(client, 'recover_wallet', {
+                backup_wif: gen.backup_private_key_wif,
+                internal_pubkey_hex: gen.internal_pubkey_hex,
+                destination: dest.address,
+                fee_rate: 2,
+                tip_sats: tipAmount,
+                network: 'regtest',
+            });
+            assert(recover.status === 'broadcast', `Recover failed: ${JSON.stringify(recover)}`);
+            assert(recover.address_type === 'taproot_script_path',
+                `Expected taproot_script_path, got ${recover.address_type}`);
+            assert(recover.tip_sats === tipAmount,
+                `Expected tip_sats ${tipAmount}, got ${recover.tip_sats}`);
+            assert(recover.tip_percent === null,
+                `Expected tip_percent null when using tip_sats, got ${recover.tip_percent}`);
+            assert(recover.tip_address, 'Missing tip_address');
+            console.log(`  Recovered: ${recover.amount_sats} sats, fee=${recover.fee_sats}, tip=${recover.tip_sats} (fixed sats)`);
+
+            // Verify fee chain: 50M = amount + fee + tip
+            assert(recover.amount_sats + recover.fee_sats + recover.tip_sats === 50_000_000,
+                `Fee chain: ${recover.amount_sats} + ${recover.fee_sats} + ${recover.tip_sats} != 50M`);
+            console.log(`  Fee chain: ${recover.amount_sats} + ${recover.fee_sats} + ${recover.tip_sats} = 50,000,000 ✓`);
+
+            // Verify destination received funds
+            const balDest = await callToolJSON(client, 'check_balance', {
+                address: dest.address, network: 'regtest',
+            });
+            assert(balDest.balance_sats === recover.amount_sats,
+                `Dest balance ${balDest.balance_sats} != recovered ${recover.amount_sats}`);
+            console.log(`  Verified: dest=${balDest.balance_sats} sats`);
+
+            pass('Taproot: recover with tip_sats (fixed 25k sats)');
+        } catch (e) { fail('Recover with tip_sats', e.message); }
+
+        // ── Test 5: check_all_balances on regtest ─────────────────────────
+
+        try {
+            console.log('\n--- Test 5: check_all_balances (regtest) ---');
             const r = await callToolJSON(client, 'check_all_balances', { network: 'regtest' });
             assert(typeof r.total_wallets === 'number', 'Missing total_wallets');
             assert(r.total_wallets >= 1, `Expected at least 1 regtest wallet, got ${r.total_wallets}`);
