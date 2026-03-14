@@ -11,6 +11,8 @@ import subprocess
 import sys
 import asyncio
 from datetime import datetime
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
 
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,8 +36,8 @@ os.makedirs(BILLS_DIR, exist_ok=True)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _save_bill(wallet: dict, address_type: str, is_tweaked: bool = False) -> str:
-    """Render a bill PNG and return its file path."""
+def _save_bill(wallet: dict, address_type: str, is_tweaked: bool = False) -> tuple[str, str]:
+    """Render a bill PNG and save companion JSON. Returns (bill_path, json_path)."""
     image = bg.generate_bill_image(
         address=wallet["address"],
         private_key_wif=wallet["private_key_wif"],
@@ -44,14 +46,60 @@ def _save_bill(wallet: dict, address_type: str, is_tweaked: bool = False) -> str
     )
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"wallet_{address_type}_{timestamp}.png"
-    path = os.path.join(BILLS_DIR, filename)
-    image.save(path)
-    return path
+    bill_path = os.path.join(BILLS_DIR, filename)
+    image.save(bill_path)
+    return bill_path
+
+
+def _save_metadata(bill_path: str, wallet_data: dict) -> str:
+    """Save wallet metadata JSON alongside the bill PNG."""
+    json_path = bill_path.replace(".png", ".json")
+    metadata = {"generated_at": datetime.now().isoformat(), **wallet_data}
+    with open(json_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+    return json_path
 
 
 def _open_file(path: str):
     """Open a file with the default macOS app (Preview for PNGs)."""
     subprocess.Popen(["open", path])
+
+
+# ── Mempool.space API helpers ─────────────────────────────────────────────────
+
+def _mempool_base_url(network: str) -> str:
+    if network == "testnet4":
+        return "https://mempool.space/testnet4/api"
+    return "https://mempool.space/api"
+
+
+def _fetch_utxos(address: str, network: str) -> list[dict]:
+    url = f"{_mempool_base_url(network)}/address/{address}/utxo"
+    req = Request(url, headers={"User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
+    with urlopen(req, timeout=30) as resp:
+        utxos = json.loads(resp.read())
+    return [{"txid": u["txid"], "vout": u["vout"], "value_sat": u["value"]} for u in utxos]
+
+
+def _broadcast_tx(raw_hex: str, network: str) -> str:
+    url = f"{_mempool_base_url(network)}/tx"
+    req = Request(url, data=raw_hex.encode(), method="POST",
+                  headers={"Content-Type": "text/plain", "User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
+    with urlopen(req, timeout=30) as resp:
+        return resp.read().decode().strip()
+
+
+def _fetch_fee_rates(network: str) -> dict:
+    url = f"{_mempool_base_url(network)}/v1/fees/recommended"
+    req = Request(url, headers={"User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
+    with urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
+
+
+def _explorer_url(txid: str, network: str) -> str:
+    if network == "testnet4":
+        return f"https://mempool.space/testnet4/tx/{txid}"
+    return f"https://mempool.space/tx/{txid}"
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -117,6 +165,117 @@ async def list_tools() -> list[types.Tool]:
                     },
                 },
                 "required": [],
+            },
+        ),
+        types.Tool(
+            name="check_balance",
+            description=(
+                "Check the Bitcoin balance of an address. "
+                "Fetches UTXOs from mempool.space and returns the total balance in BTC and satoshis."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "description": "Bitcoin address to check (bc1q..., bc1p..., tb1q..., tb1p...).",
+                    },
+                    "network": {
+                        "type": "string",
+                        "enum": ["mainnet", "testnet4"],
+                        "default": "mainnet",
+                        "description": "Bitcoin network.",
+                    },
+                },
+                "required": ["address"],
+            },
+        ),
+        types.Tool(
+            name="check_all_balances",
+            description=(
+                "Check balances of all previously generated wallets. "
+                "Reads wallet metadata from generated-bills/ and fetches each balance from mempool.space. "
+                "Use this when the user asks 'how much bitcoin do I have?' or similar."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "network": {
+                        "type": "string",
+                        "enum": ["mainnet", "testnet4"],
+                        "description": "Only check wallets on this network. If omitted, checks all.",
+                    },
+                },
+                "required": [],
+            },
+        ),
+        types.Tool(
+            name="sweep_wallet",
+            description=(
+                "Sweep all funds from a paper wallet to a destination address. "
+                "Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, "
+                "and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. "
+                "WARNING: This sends real Bitcoin — double-check the destination address."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "wif": {
+                        "type": "string",
+                        "description": "Private key in WIF format (from the paper wallet bill).",
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "Destination Bitcoin address to send funds to.",
+                    },
+                    "fee_rate": {
+                        "type": "number",
+                        "description": "Fee rate in sat/vB. If omitted, uses the 'half hour' recommended fee.",
+                    },
+                    "network": {
+                        "type": "string",
+                        "enum": ["mainnet", "testnet4"],
+                        "default": "mainnet",
+                        "description": "Bitcoin network.",
+                    },
+                },
+                "required": ["wif", "destination"],
+            },
+        ),
+        types.Tool(
+            name="recover_wallet",
+            description=(
+                "Recover funds from a Taproot paper wallet using the backup key (script-path spend). "
+                "Requires the backup private key WIF and the internal public key (both from the backup JSON). "
+                "WARNING: This sends real Bitcoin — double-check the destination address."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "backup_wif": {
+                        "type": "string",
+                        "description": "Backup private key in WIF format (from the backup JSON).",
+                    },
+                    "internal_pubkey_hex": {
+                        "type": "string",
+                        "description": "Internal public key as 64-char hex string (from the backup JSON).",
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "Destination Bitcoin address to send recovered funds to.",
+                    },
+                    "fee_rate": {
+                        "type": "number",
+                        "description": "Fee rate in sat/vB. If omitted, uses the 'half hour' recommended fee.",
+                    },
+                    "network": {
+                        "type": "string",
+                        "enum": ["mainnet", "testnet4"],
+                        "default": "mainnet",
+                        "description": "Bitcoin network.",
+                    },
+                },
+                "required": ["backup_wif", "internal_pubkey_hex", "destination"],
             },
         ),
         types.Tool(
@@ -186,15 +345,21 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         wallet = bc.generate_segwit_address(network=network)
         bill_path = _save_bill(wallet, address_type="segwit")
 
-        if open_preview:
-            _open_file(bill_path)
-
-        result = {
+        wallet_data = {
             "type": "SegWit P2WPKH",
             "network": network,
             "address": wallet["address"],
             "private_key_wif": wallet["private_key_wif"],
+        }
+        json_path = _save_metadata(bill_path, wallet_data)
+
+        if open_preview:
+            _open_file(bill_path)
+
+        result = {
+            **wallet_data,
             "bill_image": bill_path,
+            "metadata_json": json_path,
             "note": (
                 "Bill opened in Preview. Fund the address, then fold and gift. "
                 "Keep the WIF secret until the recipient is ready to sweep."
@@ -212,21 +377,32 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         is_tweaked = backup_key
         bill_path = _save_bill(wallet, address_type="taproot", is_tweaked=is_tweaked)
 
-        if open_preview:
-            _open_file(bill_path)
-
-        result = {
+        wallet_data = {
             "type": "Taproot P2TR",
             "network": network,
             "address": wallet["address"],
             "private_key_wif": wallet["private_key_wif"],
+            "internal_pubkey_hex": wallet.get("internal_pubkey_hex", ""),
             "has_backup_key": backup_key,
+        }
+        if backup_key:
+            wallet_data["backup_private_key_wif"] = wallet["backup_private_key_wif"]
+            wallet_data["backup_pubkey_hex"] = wallet.get("backup_pubkey_hex", "")
+            wallet_data["tweaked_private_key_hex"] = wallet.get("tweaked_private_key_hex", "")
+            wallet_data["script_tree_hash"] = wallet.get("script_tree_hash", "")
+
+        json_path = _save_metadata(bill_path, wallet_data)
+
+        if open_preview:
+            _open_file(bill_path)
+
+        result = {
+            **wallet_data,
             "bill_image": bill_path,
+            "metadata_json": json_path,
         }
 
         if backup_key:
-            result["backup_private_key_wif"] = wallet["backup_private_key_wif"]
-            result["tweaked_private_key_hex"] = wallet["tweaked_private_key_hex"]
             result["note"] = (
                 "Backup key generated. The bill shows the tweaked WIF. "
                 "Store backup_private_key_wif securely — needed for script-path recovery."
@@ -236,6 +412,247 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 "Bill opened in Preview. Fund the address, then fold and gift."
             )
 
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    # ── check_balance ─────────────────────────────────────────────────────────
+    elif name == "check_balance":
+        address = arguments["address"]
+        network = arguments.get("network", "mainnet")
+
+        utxos = _fetch_utxos(address, network)
+        total_sat = sum(u["value_sat"] for u in utxos)
+
+        result = {
+            "address": address,
+            "network": network,
+            "balance_btc": total_sat / 1e8,
+            "balance_sats": total_sat,
+            "utxo_count": len(utxos),
+            "utxos": utxos,
+        }
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    # ── check_all_balances ────────────────────────────────────────────────────
+    elif name == "check_all_balances":
+        filter_network = arguments.get("network", None)
+        all_files = sorted(os.listdir(BILLS_DIR), reverse=True)
+        json_files = [f for f in all_files if f.endswith(".json")]
+
+        wallets = []
+        grand_total_sat = 0
+
+        for jf in json_files:
+            try:
+                with open(os.path.join(BILLS_DIR, jf)) as f:
+                    data = json.load(f)
+                if not data.get("address") or not data.get("network"):
+                    continue
+                if filter_network and data["network"] != filter_network:
+                    continue
+
+                utxos = _fetch_utxos(data["address"], data["network"])
+                total_sat = sum(u["value_sat"] for u in utxos)
+                grand_total_sat += total_sat
+
+                wallets.append({
+                    "file": jf,
+                    "type": data.get("type"),
+                    "network": data["network"],
+                    "address": data["address"],
+                    "balance_btc": total_sat / 1e8,
+                    "balance_sats": total_sat,
+                    "utxo_count": len(utxos),
+                })
+            except Exception:
+                continue
+
+        result = {
+            "total_wallets": len(wallets),
+            "total_balance_btc": grand_total_sat / 1e8,
+            "total_balance_sats": grand_total_sat,
+            "wallets": wallets,
+        }
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    # ── sweep_wallet ──────────────────────────────────────────────────────────
+    elif name == "sweep_wallet":
+        wif_str = arguments["wif"]
+        destination = arguments["destination"]
+        network = arguments.get("network", "mainnet")
+
+        # Decode WIF
+        decoded = bc.wif_to_private_key(wif_str)
+        privkey_bytes = decoded["private_key"]
+        privkey_int = int.from_bytes(privkey_bytes, "big")
+
+        # Try all address types to find which one has funds
+        segwit_info = bc.derive_segwit_address_from_privkey(privkey_bytes, network)
+        taproot_tweaked_info = bc.derive_taproot_address_from_tweaked_privkey(privkey_bytes, network)
+        tweaked_key_bytes = bc.taproot_tweak_seckey(privkey_bytes, None)
+        tweaked_key_int = int.from_bytes(tweaked_key_bytes, "big")
+        taproot_untweaked_info = bc.derive_taproot_address_from_tweaked_privkey(tweaked_key_bytes, network)
+
+        candidates = [
+            {"addr": segwit_info["address"], "type": "segwit", "key_int": privkey_int},
+            {"addr": taproot_tweaked_info["address"], "type": "taproot_tweaked", "key_int": privkey_int},
+            {"addr": taproot_untweaked_info["address"], "type": "taproot_untweaked", "key_int": tweaked_key_int},
+        ]
+
+        address = None
+        address_type = None
+        signing_key_int = None
+        utxos = []
+
+        for c in candidates:
+            u = _fetch_utxos(c["addr"], network)
+            if u:
+                address = c["addr"]
+                address_type = c["type"]
+                signing_key_int = c["key_int"]
+                utxos = u
+                break
+
+        if not address:
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": "No funds found",
+                "checked_addresses": {c["type"]: c["addr"] for c in candidates},
+                "note": "None of the derived addresses have any UTXOs.",
+            }, indent=2))]
+
+        total_sat = sum(u["value_sat"] for u in utxos)
+
+        # Fee rate
+        fee_rate = arguments.get("fee_rate")
+        if not fee_rate:
+            fees = _fetch_fee_rates(network)
+            fee_rate = fees["halfHourFee"]
+
+        # Estimate vsize
+        n_inputs = len(utxos)
+        if address_type == "segwit":
+            vsize = 11 + n_inputs * 69 + 31
+        else:
+            vsize = 11 + n_inputs * 58 + 43
+
+        fee_sat = int(vsize * fee_rate + 0.999)
+        send_sat = total_sat - fee_sat
+
+        if send_sat <= 0:
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": "Insufficient funds",
+                "balance_sats": total_sat,
+                "estimated_fee_sats": fee_sat,
+                "fee_rate": fee_rate,
+            }, indent=2))]
+
+        # Build and sign
+        # Python functions expect bytes for private key, list[dict] for utxos
+        signing_key_bytes = signing_key_int.to_bytes(32, "big")
+        if address_type == "segwit":
+            raw_hex = bc.build_signed_segwit_sweep_tx(signing_key_bytes, utxos, destination, send_sat)
+        else:
+            input_sp = bc._address_to_scriptpubkey(address)
+            raw_hex = bc.build_signed_taproot_sweep_tx(signing_key_bytes, utxos, input_sp, destination, send_sat)
+
+        txid = _broadcast_tx(raw_hex, network)
+
+        result = {
+            "status": "broadcast",
+            "txid": txid,
+            "from_address": address,
+            "address_type": address_type,
+            "to_address": destination,
+            "amount_sats": send_sat,
+            "amount_btc": send_sat / 1e8,
+            "fee_sats": fee_sat,
+            "fee_rate_sat_vb": fee_rate,
+            "explorer_url": _explorer_url(txid, network),
+        }
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+    # ── recover_wallet ────────────────────────────────────────────────────────
+    elif name == "recover_wallet":
+        backup_wif = arguments["backup_wif"]
+        internal_pubkey_hex = arguments["internal_pubkey_hex"]
+        destination = arguments["destination"]
+        network = arguments.get("network", "mainnet")
+
+        # Decode backup WIF
+        decoded = bc.wif_to_private_key(backup_wif)
+        backup_privkey_bytes = decoded["private_key"]
+        backup_privkey_int = int.from_bytes(backup_privkey_bytes, "big")
+
+        # Derive backup public key (x-only)
+        backup_pub = bc.point_mul(backup_privkey_int)
+        backup_pubkey_x = backup_pub[0].to_bytes(32, "big")
+
+        # Parse internal pubkey
+        internal_pubkey_x = bytes.fromhex(internal_pubkey_hex)
+
+        # Compute script tree hash and tweaked output key
+        script_tree_hash = bc.compute_script_tree_hash_for_backup(backup_pubkey_x)
+        output_key_x, parity = bc.taproot_tweak_pubkey(internal_pubkey_x, script_tree_hash)
+
+        # Derive address
+        hrp = "tb" if network == "testnet4" else "bc"
+        address = bc.bech32_encode(hrp, 1, list(output_key_x), spec="bech32m")
+
+        # Fetch UTXOs
+        utxos = _fetch_utxos(address, network)
+        total_sat = sum(u["value_sat"] for u in utxos)
+
+        if not utxos:
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": "No funds found",
+                "address": address,
+                "note": "The reconstructed address has no UTXOs.",
+            }, indent=2))]
+
+        # Fee rate
+        fee_rate = arguments.get("fee_rate")
+        if not fee_rate:
+            fees = _fetch_fee_rates(network)
+            fee_rate = fees["halfHourFee"]
+
+        # Estimate vsize (script-path)
+        n_inputs = len(utxos)
+        vsize = 11 + n_inputs * 107 + 43
+        fee_sat = int(vsize * fee_rate + 0.999)
+        send_sat = total_sat - fee_sat
+
+        if send_sat <= 0:
+            return [types.TextContent(type="text", text=json.dumps({
+                "error": "Insufficient funds",
+                "balance_sats": total_sat,
+                "estimated_fee_sats": fee_sat,
+                "fee_rate": fee_rate,
+            }, indent=2))]
+
+        # Build and sign script-path transaction
+        # Python function expects: bytes privkey, bytes pubkey_x, bytes internal_x,
+        # int parity, list[dict] utxos, bytes input_scriptpubkey, str dest, int value
+        input_scriptpubkey = bc._address_to_scriptpubkey(address)
+        raw_hex = bc.build_signed_taproot_scriptpath_sweep_tx(
+            backup_privkey_bytes, backup_pubkey_x,
+            internal_pubkey_x, parity,
+            utxos, input_scriptpubkey,
+            destination, send_sat,
+        )
+
+        txid = _broadcast_tx(raw_hex, network)
+
+        result = {
+            "status": "broadcast",
+            "txid": txid,
+            "from_address": address,
+            "address_type": "taproot_script_path",
+            "to_address": destination,
+            "amount_sats": send_sat,
+            "amount_btc": send_sat / 1e8,
+            "fee_sats": fee_sat,
+            "fee_rate_sat_vb": fee_rate,
+            "explorer_url": _explorer_url(txid, network),
+        }
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     # ── open_wallet_app ───────────────────────────────────────────────────────
@@ -263,18 +680,34 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     # ── list_generated_wallets ────────────────────────────────────────────────
     elif name == "list_generated_wallets":
         open_folder = arguments.get("open_folder", False)
-        files = sorted(
-            [f for f in os.listdir(BILLS_DIR) if f.endswith(".png")],
-            reverse=True,
-        )
+        all_files = sorted(os.listdir(BILLS_DIR), reverse=True)
+        json_files = [f for f in all_files if f.endswith(".json")]
+
+        wallets = []
+        for jf in json_files:
+            try:
+                with open(os.path.join(BILLS_DIR, jf)) as f:
+                    data = json.load(f)
+                bill = jf.replace(".json", ".png")
+                wallets.append({
+                    "bill": bill if bill in all_files else None,
+                    "metadata_json": jf,
+                    "type": data.get("type"),
+                    "network": data.get("network"),
+                    "address": data.get("address"),
+                    "has_backup_key": data.get("has_backup_key", False),
+                })
+            except Exception:
+                wallets.append({"metadata_json": jf})
+
         if open_folder:
             _open_file(BILLS_DIR)
         return [types.TextContent(
             type="text",
             text=json.dumps({
                 "directory": BILLS_DIR,
-                "count": len(files),
-                "wallets": files,
+                "count": len(wallets),
+                "wallets": wallets,
             }, indent=2)
         )]
 

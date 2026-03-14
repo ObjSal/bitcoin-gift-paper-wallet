@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.2",
   "name": "bitcoin-gift-wallet",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "display_name": "Bitcoin Gift Wallet",
   "description": "Generate Bitcoin paper wallets with QR codes and printable bill images. SegWit and Taproot supported. All keys generated locally — nothing leaves your machine.",
   "author": {
@@ -29,6 +29,22 @@
     {
       "name": "generate_taproot_wallet",
       "description": "Generate a Bitcoin Taproot (P2TR, bc1p...) paper wallet bill image, with optional backup key"
+    },
+    {
+      "name": "check_balance",
+      "description": "Check the Bitcoin balance of an address via mempool.space"
+    },
+    {
+      "name": "check_all_balances",
+      "description": "Check balances of all previously generated wallets"
+    },
+    {
+      "name": "sweep_wallet",
+      "description": "Sweep all funds from a paper wallet to a destination address"
+    },
+    {
+      "name": "recover_wallet",
+      "description": "Recover funds from a Taproot paper wallet using the backup key"
     },
     {
       "name": "open_wallet_app",
