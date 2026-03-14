@@ -284,8 +284,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 'Sweep all funds from a paper wallet to a destination address. ' +
                 'Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, ' +
                 'and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. ' +
-                'IMPORTANT: Before sweeping, ask the user which tip percentage they\'d like to include ' +
-                '(0.99% recommended, 0.5%, 0.1%, or no tip). ' +
+                'IMPORTANT: Before sweeping, ask the user which tip they\'d like to include ' +
+                '(0.99% recommended, 0.5%, 0.1%, or no tip — or a specific amount in sats). ' +
                 'WARNING: This sends real Bitcoin — double-check the destination address.',
             inputSchema: {
                 type: 'object',
@@ -304,9 +304,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     tip_percent: {
                         type: 'number',
-                        enum: [0.99, 0.5, 0.1, 0],
                         default: 0.99,
-                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).',
+                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip). Ignored if tip_sats is set.',
+                    },
+                    tip_sats: {
+                        type: 'number',
+                        description: 'Tip amount in satoshis. Overrides tip_percent if set.',
                     },
                     network: {
                         type: 'string',
@@ -323,8 +326,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
                 'Recover funds from a Taproot paper wallet using the backup key (script-path spend). ' +
                 'Requires the backup private key WIF and the internal public key (both from the backup JSON). ' +
-                'IMPORTANT: Before recovering, ask the user which tip percentage they\'d like to include ' +
-                '(0.99% recommended, 0.5%, 0.1%, or no tip). ' +
+                'IMPORTANT: Before recovering, ask the user which tip they\'d like to include ' +
+                '(0.99% recommended, 0.5%, 0.1%, or no tip — or a specific amount in sats). ' +
                 'WARNING: This sends real Bitcoin — double-check the destination address.',
             inputSchema: {
                 type: 'object',
@@ -347,9 +350,12 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     tip_percent: {
                         type: 'number',
-                        enum: [0.99, 0.5, 0.1, 0],
                         default: 0.99,
-                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).',
+                        description: 'Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip). Ignored if tip_sats is set.',
+                    },
+                    tip_sats: {
+                        type: 'number',
+                        description: 'Tip amount in satoshis. Overrides tip_percent if set.',
                     },
                     network: {
                         type: 'string',
@@ -630,9 +636,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             feeRate = fees.halfHourFee;
         }
 
-        // Compute tip
-        const tipPercent = args.tip_percent ?? 0.99;
-        const tipSat     = tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0;
+        // Compute tip (tip_sats overrides tip_percent)
+        const tipPercent = args.tip_sats != null ? null : (args.tip_percent ?? 0.99);
+        const tipSat     = args.tip_sats != null
+            ? Math.floor(args.tip_sats)
+            : (tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0);
         const tipAddr    = TIP_ADDRESSES[network] || TIP_ADDRESSES.mainnet;
 
         // Estimate vsize and fee (add 31 vB for P2WPKH tip output if tipping)
@@ -756,9 +764,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             feeRate = fees.halfHourFee;
         }
 
-        // Compute tip
-        const tipPercent = args.tip_percent ?? 0.99;
-        const tipSat     = tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0;
+        // Compute tip (tip_sats overrides tip_percent)
+        const tipPercent = args.tip_sats != null ? null : (args.tip_percent ?? 0.99);
+        const tipSat     = args.tip_sats != null
+            ? Math.floor(args.tip_sats)
+            : (tipPercent > 0 ? Math.floor(totalSat * tipPercent / 100) : 0);
         const tipAddr    = TIP_ADDRESSES[network] || TIP_ADDRESSES.mainnet;
 
         // Estimate vsize (script-path, add 31 vB for P2WPKH tip output if tipping)

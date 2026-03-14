@@ -255,8 +255,8 @@ async def list_tools() -> list[types.Tool]:
                 "Sweep all funds from a paper wallet to a destination address. "
                 "Takes the private key (WIF) from the bill, fetches UTXOs, builds a signed transaction, "
                 "and broadcasts it. Supports SegWit and Taproot (both tweaked and untweaked) keys. "
-                "IMPORTANT: Before sweeping, ask the user which tip percentage they'd like to include "
-                "(0.99% recommended, 0.5%, 0.1%, or no tip). "
+                "IMPORTANT: Before sweeping, ask the user which tip they'd like to include "
+                "(0.99% recommended, 0.5%, 0.1%, or no tip — or a specific amount in sats). "
                 "WARNING: This sends real Bitcoin — double-check the destination address."
             ),
             inputSchema={
@@ -276,9 +276,12 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "tip_percent": {
                         "type": "number",
-                        "enum": [0.99, 0.5, 0.1, 0],
                         "default": 0.99,
-                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).",
+                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip). Ignored if tip_sats is set.",
+                    },
+                    "tip_sats": {
+                        "type": "number",
+                        "description": "Tip amount in satoshis. Overrides tip_percent if set.",
                     },
                     "network": {
                         "type": "string",
@@ -295,8 +298,8 @@ async def list_tools() -> list[types.Tool]:
             description=(
                 "Recover funds from a Taproot paper wallet using the backup key (script-path spend). "
                 "Requires the backup private key WIF and the internal public key (both from the backup JSON). "
-                "IMPORTANT: Before recovering, ask the user which tip percentage they'd like to include "
-                "(0.99% recommended, 0.5%, 0.1%, or no tip). "
+                "IMPORTANT: Before recovering, ask the user which tip they'd like to include "
+                "(0.99% recommended, 0.5%, 0.1%, or no tip — or a specific amount in sats). "
                 "WARNING: This sends real Bitcoin — double-check the destination address."
             ),
             inputSchema={
@@ -320,9 +323,12 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "tip_percent": {
                         "type": "number",
-                        "enum": [0.99, 0.5, 0.1, 0],
                         "default": 0.99,
-                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip).",
+                        "description": "Tip percentage to support the project. Ask the user to choose: 0.99% (recommended), 0.5%, 0.1%, or 0 (no tip). Ignored if tip_sats is set.",
+                    },
+                    "tip_sats": {
+                        "type": "number",
+                        "description": "Tip amount in satoshis. Overrides tip_percent if set.",
                     },
                     "network": {
                         "type": "string",
@@ -595,9 +601,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             fees = _fetch_fee_rates(network)
             fee_rate = fees["halfHourFee"]
 
-        # Compute tip
-        tip_percent = arguments.get("tip_percent", 0.99)
-        tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
+        # Compute tip (tip_sats overrides tip_percent)
+        if "tip_sats" in arguments and arguments["tip_sats"] is not None:
+            tip_percent = None
+            tip_sat = int(arguments["tip_sats"])
+        else:
+            tip_percent = arguments.get("tip_percent", 0.99)
+            tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
         tip_addr = TIP_ADDRESSES.get(network, TIP_ADDRESSES["mainnet"])
 
         # Estimate vsize (add 31 vB for P2WPKH tip output if tipping)
@@ -695,9 +705,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
             fees = _fetch_fee_rates(network)
             fee_rate = fees["halfHourFee"]
 
-        # Compute tip
-        tip_percent = arguments.get("tip_percent", 0.99)
-        tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
+        # Compute tip (tip_sats overrides tip_percent)
+        if "tip_sats" in arguments and arguments["tip_sats"] is not None:
+            tip_percent = None
+            tip_sat = int(arguments["tip_sats"])
+        else:
+            tip_percent = arguments.get("tip_percent", 0.99)
+            tip_sat = int(total_sat * tip_percent / 100) if tip_percent > 0 else 0
         tip_addr = TIP_ADDRESSES.get(network, TIP_ADDRESSES["mainnet"])
 
         # Estimate vsize (script-path, add 31 vB for P2WPKH tip output if tipping)

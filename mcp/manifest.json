@@ -1,9 +1,9 @@
 {
   "manifest_version": "0.2",
   "name": "bitcoin-gift-wallet",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "display_name": "Bitcoin Gift Wallet",
-  "description": "Generate Bitcoin paper wallets with QR codes and printable bill images. SegWit and Taproot supported. All keys generated locally — nothing leaves your machine.",
+  "description": "Generate, manage, and spend Bitcoin paper wallets. Create printable bill images with QR codes (SegWit and Taproot), check balances, sweep funds, and recover using backup keys. All keys and signing happen locally — nothing leaves your machine.",
   "author": {
     "name": "ObjSal"
   },
