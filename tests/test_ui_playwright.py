@@ -205,10 +205,14 @@ def extract_result_data(page):
     fee_text = data.get("Fee", "")
     fee_sat = int(fee_text.split(" sats")[0].replace(",", ""))
 
+    tip_text = data.get("Tip", "")
+    tip_sat = int(tip_text.split(" sats")[0].replace(",", "")) if tip_text else 0
+
     return {
         "txid": data.get("Transaction ID", ""),
         "amount_sat": amount_sat,
         "fee_sat": fee_sat,
+        "tip_sat": tip_sat,
         "dest_address": data.get("Destination", ""),
     }
 
@@ -310,7 +314,14 @@ def sweep_funds(page, base_url, bill_wif, expected_source, dest_addr):
 
     # --- Step 3: Sweep ---
     page.fill("#destAddress", dest_addr)
+    # Expand the collapsible fee rate section before filling
+    page.click("#feeRateToggle")
     page.fill("#feeRate", "2")
+    # Expand the tip section to verify the default 0.99% tip is active
+    page.click("#tipToggle")
+    active_tip = page.text_content('.tip-preset.active')
+    assert active_tip and "0.99%" in active_tip, \
+        f"Expected default 0.99% tip preset active, got: {active_tip}"
 
     page.click("#btnSweep")
     page.wait_for_selector("#cardResult:not(.hidden)", timeout=ACTION_TIMEOUT)
@@ -460,6 +471,7 @@ def main():
         )
         print(f"  Amount: {sweep_result['amount_sat']:,} sats")
         print(f"  Fee:    {sweep_result['fee_sat']:,} sats")
+        print(f"  Tip:    {sweep_result['tip_sat']:,} sats")
 
         # ---- Step 6: Recover Address 2 → Address 3 ----
         print("\n--- Step 6: Recover Address 2 → Address 3 ---")
@@ -477,28 +489,36 @@ def main():
         print("\n--- Step 7: Verify Fee Chain ---")
         initial_sats = 100_000_000
         sweep_fee = sweep_result["fee_sat"]
+        sweep_tip = sweep_result["tip_sat"]
         recover_fee = recover_result["fee_sat"]
-        total_fees = sweep_fee + recover_fee
-        expected_final = initial_sats - total_fees
+        total_deductions = sweep_fee + sweep_tip + recover_fee
+        expected_final = initial_sats - total_deductions
+
+        # Verify tip is ~0.99% of the funded amount
+        expected_tip = int(initial_sats * 0.99 / 100)
+        assert sweep_tip == expected_tip, \
+            (f"Tip mismatch: expected {expected_tip} (0.99% of {initial_sats}), "
+             f"got {sweep_tip}")
 
         assert recover_result["amount_sat"] == expected_final, \
             (f"Fee chain mismatch: expected {expected_final}, "
              f"got {recover_result['amount_sat']} "
-             f"(1.0 BTC - {sweep_fee} - {recover_fee})")
+             f"(1.0 BTC - {sweep_fee} fee - {sweep_tip} tip - {recover_fee} fee)")
 
         # Print summary table
         print(f"\n  {'Step':<10} {'From':<12} {'To':<12} "
-              f"{'Amount':>15} {'Fee':>10}")
-        print(f"  {'-'*10} {'-'*12} {'-'*12} {'-'*15} {'-'*10}")
+              f"{'Amount':>15} {'Fee':>10} {'Tip':>10}")
+        print(f"  {'-'*10} {'-'*12} {'-'*12} {'-'*15} {'-'*10} {'-'*10}")
         print(f"  {'Faucet':<10} {'coinbase':<12} {'Address 1':<12} "
-              f"{'100,000,000':>15} {'—':>10}")
+              f"{'100,000,000':>15} {'—':>10} {'—':>10}")
         print(f"  {'Sweep':<10} {'Address 1':<12} {'Address 2':<12} "
-              f"{sweep_result['amount_sat']:>15,} {sweep_fee:>10,}")
+              f"{sweep_result['amount_sat']:>15,} {sweep_fee:>10,} {sweep_tip:>10,}")
         print(f"  {'Recover':<10} {'Address 2':<12} {'Address 3':<12} "
-              f"{recover_result['amount_sat']:>15,} {recover_fee:>10,}")
-        print(f"\n  Total fees: {total_fees:,} sats")
-        print(f"  Fee chain: 100,000,000 - {sweep_fee:,} - {recover_fee:,}"
-              f" = {expected_final:,} ✓")
+              f"{recover_result['amount_sat']:>15,} {recover_fee:>10,} {'—':>10}")
+        print(f"\n  Total deductions: {total_deductions:,} sats"
+              f" (fees: {sweep_fee + recover_fee:,}, tip: {sweep_tip:,})")
+        print(f"  Fee chain: 100,000,000 - {sweep_fee:,} - {sweep_tip:,}"
+              f" - {recover_fee:,} = {expected_final:,} ✓")
 
         # Check for unexpected dialogs
         if dialogs:
