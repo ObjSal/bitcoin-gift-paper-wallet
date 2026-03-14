@@ -82,17 +82,63 @@ pip install mcp Pillow
 
 ---
 
+## Regtest Support
+
+The bundle ships with `REGTEST_SERVER_URL=http://127.0.0.1:8080` pre-configured. When the local Python server is running in regtest mode (`./run.sh --regtest`), all MCP tools automatically work with regtest — no extra setup needed.
+
+To override the URL (e.g., different port or remote server), add an `env` block to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "bitcoin-gift-wallet": {
+      "command": "node",
+      "args": ["/path/to/mcp_server.js"],
+      "env": {
+        "REGTEST_SERVER_URL": "http://127.0.0.1:9090"
+      }
+    }
+  }
+}
+```
+
+For Claude Code, set the env var in `.claude/settings.local.json`:
+
+```json
+{
+  "mcpServers": {
+    "bitcoin-gift-wallet": {
+      "command": "node",
+      "args": ["/path/to/bitcoin-gift-wallet/mcp/mcp_server.js"],
+      "env": {
+        "REGTEST_SERVER_URL": "http://127.0.0.1:8080"
+      }
+    }
+  }
+}
+```
+
+To disable regtest (use only mainnet/testnet4), set `REGTEST_SERVER_URL` to an empty string.
+
+**Note:** The env var only affects regtest operations. Mainnet and testnet4 always use mempool.space directly, regardless of this setting.
+
+---
+
 ## Available Tools
 
 | Tool | Description |
 |------|-------------|
 | `generate_segwit_wallet` | Generate a SegWit (bc1q...) wallet + open bill in Preview |
 | `generate_taproot_wallet` | Generate a Taproot (bc1p...) wallet, with optional backup key |
+| `check_balance` | Check the balance of an address via mempool.space (or regtest) |
+| `check_all_balances` | Check balances of all previously generated wallets |
+| `sweep_wallet` | Sweep all funds from a paper wallet to a destination address, with optional tip |
+| `recover_wallet` | Recover funds using the backup key (script-path spend), with optional tip |
 | `open_wallet_app` | Open index / sweep / recover page in browser |
-| `list_generated_wallets` | List all previously generated bills |
+| `list_generated_wallets` | List all previously generated bills with metadata |
 | `open_wallet_bill` | Reopen a specific bill by filename |
 
-Generated bills are saved to `generated-bills/` in the project root.
+Generated bills are saved to `generated-bills/` in the project root (or `~/bitcoin-gift-wallet/generated-bills/` in bundle mode).
 
 ---
 

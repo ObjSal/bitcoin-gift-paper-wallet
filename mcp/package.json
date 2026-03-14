@@ -1,6 +1,6 @@
 {
   "name": "bitcoin-gift-wallet-mcp",
-  "version": "1.2.0",
+  "version": "1.2.2",
   "description": "Claude Desktop MCP server for Bitcoin paper wallet generation",
   "main": "mcp_server.js",
   "scripts": {
