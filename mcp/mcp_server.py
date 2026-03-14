@@ -65,7 +65,13 @@ def _open_file(path: str):
     subprocess.Popen(["open", path])
 
 
-# ── Mempool.space API helpers ─────────────────────────────────────────────────
+# ── Network API helpers ───────────────────────────────────────────────────────
+#
+# Supports mainnet/testnet4 via mempool.space and regtest via local server.
+# Set REGTEST_SERVER_URL env var to point to the local server (e.g. http://127.0.0.1:8080).
+
+REGTEST_SERVER_URL = os.environ.get("REGTEST_SERVER_URL", "")
+
 
 def _mempool_base_url(network: str) -> str:
     if network == "testnet4":
@@ -74,6 +80,18 @@ def _mempool_base_url(network: str) -> str:
 
 
 def _fetch_utxos(address: str, network: str) -> list[dict]:
+    if network == "regtest":
+        if not REGTEST_SERVER_URL:
+            raise RuntimeError("REGTEST_SERVER_URL not set")
+        url = f"{REGTEST_SERVER_URL}/api/utxos"
+        data = json.dumps({"address": address, "network": "regtest"}).encode()
+        req = Request(url, data=data, method="POST",
+                      headers={"Content-Type": "application/json"})
+        with urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        return [{"txid": u["txid"], "vout": u["vout"],
+                 "value_sat": u.get("value_sat", u.get("value", 0))}
+                for u in result.get("utxos", [])]
     url = f"{_mempool_base_url(network)}/address/{address}/utxo"
     req = Request(url, headers={"User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
     with urlopen(req, timeout=30) as resp:
@@ -82,6 +100,16 @@ def _fetch_utxos(address: str, network: str) -> list[dict]:
 
 
 def _broadcast_tx(raw_hex: str, network: str) -> str:
+    if network == "regtest":
+        if not REGTEST_SERVER_URL:
+            raise RuntimeError("REGTEST_SERVER_URL not set")
+        url = f"{REGTEST_SERVER_URL}/api/broadcast"
+        data = json.dumps({"raw_hex": raw_hex, "network": "regtest"}).encode()
+        req = Request(url, data=data, method="POST",
+                      headers={"Content-Type": "application/json"})
+        with urlopen(req, timeout=30) as resp:
+            result = json.loads(resp.read())
+        return result["txid"]
     url = f"{_mempool_base_url(network)}/tx"
     req = Request(url, data=raw_hex.encode(), method="POST",
                   headers={"Content-Type": "text/plain", "User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
@@ -90,6 +118,8 @@ def _broadcast_tx(raw_hex: str, network: str) -> str:
 
 
 def _fetch_fee_rates(network: str) -> dict:
+    if network == "regtest":
+        return {"fastestFee": 2, "halfHourFee": 1, "hourFee": 1}
     url = f"{_mempool_base_url(network)}/v1/fees/recommended"
     req = Request(url, headers={"User-Agent": "bitcoin-gift-wallet-mcp/1.0"})
     with urlopen(req, timeout=15) as resp:
@@ -97,6 +127,8 @@ def _fetch_fee_rates(network: str) -> dict:
 
 
 def _explorer_url(txid: str, network: str) -> str:
+    if network == "regtest":
+        return f"regtest:{txid}"
     if network == "testnet4":
         return f"https://mempool.space/testnet4/tx/{txid}"
     return f"https://mempool.space/tx/{txid}"
@@ -119,7 +151,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "default": "mainnet",
                         "description": "Bitcoin network. Use mainnet for real wallets.",
                     },
@@ -145,7 +177,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "default": "mainnet",
                         "description": "Bitcoin network. Use mainnet for real wallets.",
                     },
@@ -182,7 +214,7 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "default": "mainnet",
                         "description": "Bitcoin network.",
                     },
@@ -202,7 +234,7 @@ async def list_tools() -> list[types.Tool]:
                 "properties": {
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "description": "Only check wallets on this network. If omitted, checks all.",
                     },
                 },
@@ -234,7 +266,7 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "default": "mainnet",
                         "description": "Bitcoin network.",
                     },
@@ -270,7 +302,7 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "network": {
                         "type": "string",
-                        "enum": ["mainnet", "testnet4"],
+                        "enum": ["mainnet", "testnet4", "regtest"],
                         "default": "mainnet",
                         "description": "Bitcoin network.",
                     },
@@ -375,13 +407,25 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
 
         wallet = bc.generate_taproot_address(network=network, backup_key=backup_key)
         is_tweaked = backup_key
-        bill_path = _save_bill(wallet, address_type="taproot", is_tweaked=is_tweaked)
+
+        # For backup wallets, the bill shows the tweaked WIF (key-path spending).
+        # For non-backup wallets, the bill shows the untweaked (internal) WIF.
+        if backup_key:
+            tweaked_key_bytes = bytes.fromhex(wallet["tweaked_private_key_hex"])
+            bill_wif = bc.private_key_to_wif(tweaked_key_bytes, compressed=True, network=network)
+        else:
+            bill_wif = wallet["private_key_wif"]
+
+        # Override wallet WIF for bill generation
+        wallet_for_bill = dict(wallet)
+        wallet_for_bill["private_key_wif"] = bill_wif
+        bill_path = _save_bill(wallet_for_bill, address_type="taproot", is_tweaked=is_tweaked)
 
         wallet_data = {
             "type": "Taproot P2TR",
             "network": network,
             "address": wallet["address"],
-            "private_key_wif": wallet["private_key_wif"],
+            "private_key_wif": bill_wif,
             "internal_pubkey_hex": wallet.get("internal_pubkey_hex", ""),
             "has_backup_key": backup_key,
         }
@@ -594,7 +638,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
         output_key_x, parity = bc.taproot_tweak_pubkey(internal_pubkey_x, script_tree_hash)
 
         # Derive address
-        hrp = "tb" if network == "testnet4" else "bc"
+        hrp = "bcrt" if network == "regtest" else "tb" if network == "testnet4" else "bc"
         address = bc.bech32_encode(hrp, 1, list(output_key_x), spec="bech32m")
 
         # Fetch UTXOs
