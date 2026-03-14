@@ -22,23 +22,23 @@ Each bill includes the public address (as text + QR code) on the front and the p
 - **Claude users** who want to generate wallets directly from Claude Desktop or Claude Code via MCP
 - **Anyone** who needs a simple, auditable paper wallet generator with no dependencies
 
-## Pages
-
-| Page | Description |
-|------|-------------|
-| **Generator** (`index.html`) | Create wallets and print bills — SegWit (P2WPKH) or Taproot (P2TR) |
-| **Sweep** (`sweep.html`) | Recipient enters the private key from the bill to send funds to their own wallet |
-| **Recover** (`recover.html`) | Giver uses their backup key to recover funds via script-path spend |
-| **Faucet** (`faucet.html`) | Fund addresses with test Bitcoin on a local regtest network (requires server) |
-| **Donate** (`donate.html`) | Support the project with a Bitcoin donation |
-
 ## Quick Start
 
 ### Option 1: GitHub Pages (easiest)
 
 Push this repo to GitHub and enable GitHub Pages. Visit `https://ObjSal.github.io/bitcoin-gift-paper-wallet/`. Works immediately — mainnet and testnet4 supported.
 
-### Option 2: Run Locally (no dependencies)
+### Option 2: Claude Desktop / Claude Code (via MCP)
+
+Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install. Then ask Claude:
+
+- *"Generate a bitcoin paper wallet"*
+- *"Create a taproot wallet with a backup key"*
+- *"Make me 3 segwit gift wallets for holiday gifts"*
+
+See the [MCP Server](#mcp-server-claude-desktop--claude-code) section for manual setup and more examples.
+
+### Option 3: Run Locally (no dependencies)
 
 ```bash
 # Clone the repo
@@ -53,7 +53,7 @@ python3 -m http.server 8080
 
 That's it. All crypto, QR generation, and bill rendering happen client-side in JavaScript.
 
-### Option 3: Run with Python Server (for regtest testing)
+### Option 4: Run with Python Server (for regtest testing)
 
 ```bash
 # Install dependencies
@@ -163,9 +163,11 @@ Generate paper wallets directly from Claude using [MCP](https://modelcontextprot
 
 ### Option 1: Download the .mcpb bundle (easiest)
 
-Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install in Claude Desktop. No Node.js, npm, or configuration required.
+Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install in Claude Desktop. No extra software required — Claude Desktop includes its own Node.js runtime.
 
-### Option 2: Manual setup (from source)
+> **Note:** The .mcpb bundle includes pre-compiled native binaries for macOS (ARM & Intel), Windows (x64), and Linux (x64 & ARM64). It has been tested on macOS — if you encounter issues on Windows or Linux, please [open an issue](https://github.com/ObjSal/bitcoin-gift-wallet/issues) so we can fix it.
+
+### Option 2: Node.js manual setup (from source)
 
 ```bash
 cd mcp && npm install
@@ -184,9 +186,28 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 }
 ```
 
-Then ask Claude: *"Generate a taproot paper wallet"* — it will create the wallet, render a bill image, and open it in Preview.
+### Option 3: Python manual setup (from source)
 
-See [`docs/mcp_setup.md`](docs/mcp_setup.md) for full setup instructions (including Python MCP server and Claude Code configuration).
+```bash
+pip install mcp Pillow
+```
+
+Add to your Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "bitcoin-gift-wallet": {
+      "command": "python3",
+      "args": ["/path/to/bitcoin-gift-wallet/mcp/mcp_server.py"]
+    }
+  }
+}
+```
+
+Both options expose the same tools. Restart Claude Desktop after editing the config, then ask Claude: *"Generate a taproot paper wallet"*.
+
+See [`docs/mcp_setup.md`](docs/mcp_setup.md) for Claude Code configuration and more details.
 
 ### MCP Tools
 
@@ -210,6 +231,18 @@ Once the MCP server is installed, try asking Claude:
 - *"Open the sweep page so I can send funds from a paper wallet"*
 
 ## Project Structure
+
+### Pages
+
+| Page | Description |
+|------|-------------|
+| **Generator** (`index.html`) | Create wallets and print bills — SegWit (P2WPKH) or Taproot (P2TR) |
+| **Sweep** (`sweep.html`) | Recipient enters the private key from the bill to send funds to their own wallet |
+| **Recover** (`recover.html`) | Giver uses their backup key to recover funds via script-path spend |
+| **Faucet** (`faucet.html`) | Fund addresses with test Bitcoin on a local regtest network (requires server) |
+| **Donate** (`donate.html`) | Support the project with a Bitcoin donation |
+
+### Directory Layout
 
 ```
 index.html                          # Generator page
