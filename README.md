@@ -236,6 +236,8 @@ See [`docs/mcp_setup.md`](docs/mcp_setup.md) for Claude Code configuration and m
 
 You can use the MCP tools with a local regtest network for testing. This lets you generate wallets, fund them with test Bitcoin, and sweep/recover — all without real funds.
 
+The `.mcpb` bundle ships with `REGTEST_SERVER_URL=http://127.0.0.1:8080` pre-configured, so you only need to start the regtest server:
+
 1. **Install Bitcoin Core** and start the regtest server:
 
 ```bash
@@ -243,29 +245,30 @@ brew install bitcoin                         # macOS
 python3 server/server.py 8080 --regtest      # starts bitcoind + server
 ```
 
-2. **Add `REGTEST_SERVER_URL`** to your Claude Desktop MCP config:
+2. **Restart Claude Desktop**, then ask Claude:
+
+- *"Generate a regtest taproot wallet with backup key"*
+- *"Fund the wallet with 1 BTC"* (uses the regtest faucet)
+- *"How much bitcoin do I have?"*
+- *"Sweep my paper wallet to bcrt1q..."*
+
+Transactions confirm instantly on regtest (1 block mined after each broadcast).
+
+**Overriding the regtest URL:** If your server runs on a different port, add an `env` block to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "bitcoin-gift-wallet": {
-      "command": "node",
-      "args": ["/path/to/bitcoin-gift-wallet/mcp/mcp_server.js"],
       "env": {
-        "REGTEST_SERVER_URL": "http://localhost:8080"
+        "REGTEST_SERVER_URL": "http://127.0.0.1:9090"
       }
     }
   }
 }
 ```
 
-3. **Restart Claude Desktop**, then ask Claude:
-
-- *"Generate a regtest taproot wallet with backup key"*
-- *"Fund the wallet with 1 BTC"* (uses the regtest faucet)
-- *"Sweep my paper wallet to bcrt1q..."*
-
-Transactions confirm instantly on regtest (1 block mined after each broadcast).
+The env var only affects regtest operations — mainnet and testnet4 always use mempool.space directly.
 
 ### Example Prompts
 
