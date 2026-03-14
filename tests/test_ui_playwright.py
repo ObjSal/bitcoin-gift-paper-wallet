@@ -278,10 +278,14 @@ def fund_via_faucet(page, base_url, address):
     screenshot(page, "step4_fund_faucet")
 
 
-def sweep_funds(page, base_url, bill_wif, expected_source, dest_addr):
+def sweep_funds(page, base_url, bill_wif, expected_source, dest_addr,
+                tip=True, label="sweep"):
     """Sweep from bill_wif to dest_addr via the Sweep page.
 
-    Returns dict with txid, amount_sat, fee_sat, dest_address.
+    If tip=True (default), keeps the default 0.99% tip and verifies it.
+    If tip=False, clicks "No Tip" and verifies tip is 0.
+
+    Returns dict with txid, amount_sat, fee_sat, tip_sat, dest_address.
     """
     page.goto(f"{base_url}/sweep.html")
     page.wait_for_load_state("networkidle")
@@ -304,24 +308,29 @@ def sweep_funds(page, base_url, bill_wif, expected_source, dest_addr):
     assert derived == expected_source, \
         f"Sweep: derived address mismatch: {derived} != {expected_source}"
 
-    screenshot(page, "step5_sweep_derived")
+    screenshot(page, f"{label}_derived")
 
     # --- Step 2: Check balance ---
     page.click("#btnCheckBalance")
     page.wait_for_selector("#cardStep3:not(.hidden)", timeout=STEP_TIMEOUT)
 
-    screenshot(page, "step5_sweep_balance")
+    screenshot(page, f"{label}_balance")
 
     # --- Step 3: Sweep ---
     page.fill("#destAddress", dest_addr)
     # Expand the collapsible fee rate section before filling
     page.click("#feeRateToggle")
     page.fill("#feeRate", "2")
-    # Expand the tip section to verify the default 0.99% tip is active
+    # Expand the tip section
     page.click("#tipToggle")
-    active_tip = page.text_content('.tip-preset.active')
-    assert active_tip and "0.99%" in active_tip, \
-        f"Expected default 0.99% tip preset active, got: {active_tip}"
+    if tip:
+        # Verify the default 0.99% tip preset is active
+        active_tip = page.text_content('.tip-preset.active')
+        assert active_tip and "0.99%" in active_tip, \
+            f"Expected default 0.99% tip preset active, got: {active_tip}"
+    else:
+        # Click "No Tip" to disable the tip
+        page.click('.tip-preset[data-pct="0"]')
 
     page.click("#btnSweep")
     page.wait_for_selector("#cardResult:not(.hidden)", timeout=ACTION_TIMEOUT)
@@ -337,15 +346,15 @@ def sweep_funds(page, base_url, bill_wif, expected_source, dest_addr):
     assert result["dest_address"] == dest_addr, \
         f"Sweep destination mismatch: {result['dest_address']} != {dest_addr}"
 
-    screenshot(page, "step5_sweep_confirmed")
+    screenshot(page, f"{label}_confirmed")
     return result
 
 
 def recover_funds(page, base_url, backup_wif, internal_pubkey,
-                  expected_source, dest_addr):
+                  expected_source, dest_addr, label="recover"):
     """Recover via backup key to dest_addr via the Recovery page.
 
-    Returns dict with txid, amount_sat, fee_sat, dest_address.
+    Returns dict with txid, amount_sat, fee_sat, tip_sat, dest_address.
     """
     page.goto(f"{base_url}/recover.html")
     page.wait_for_load_state("networkidle")
@@ -366,13 +375,13 @@ def recover_funds(page, base_url, backup_wif, internal_pubkey,
     assert derived == expected_source, \
         f"Recover: reconstructed address mismatch: {derived} != {expected_source}"
 
-    screenshot(page, "step6_recover_derived")
+    screenshot(page, f"{label}_derived")
 
     # --- Step 2: Check balance ---
     page.click("#btnCheckBalance")
     page.wait_for_selector("#cardStep3:not(.hidden)", timeout=STEP_TIMEOUT)
 
-    screenshot(page, "step6_recover_balance")
+    screenshot(page, f"{label}_balance")
 
     # --- Step 3: Recover ---
     page.fill("#destAddress", dest_addr)
@@ -392,7 +401,7 @@ def recover_funds(page, base_url, backup_wif, internal_pubkey,
     assert result["dest_address"] == dest_addr, \
         f"Recover destination mismatch: {result['dest_address']} != {dest_addr}"
 
-    screenshot(page, "step6_recover_confirmed")
+    screenshot(page, f"{label}_confirmed")
     return result
 
 
@@ -446,28 +455,29 @@ def main():
             dialog.dismiss()
         page.on("dialog", on_dialog)
 
-        # ---- Step 1-3: Generate 3 Taproot+backup wallets ----
-        print("\n--- Steps 1-3: Generate 3 Taproot+backup wallets ---")
+        # ---- Step 1-3: Generate 6 Taproot+backup wallets ----
+        print("\n--- Steps 1-3: Generate 6 Taproot+backup wallets ---")
         wallets = []
-        for i in range(3):
+        for i in range(6):
             w = generate_wallet(page, base_url, i)
             wallets.append(w)
             print(f"  Wallet {i+1}: {w['address'][:20]}...{w['address'][-8:]}")
 
-        addr1, addr2, addr3 = (w["address"] for w in wallets)
+        addr1, addr2, addr3, addr4, addr5, addr6 = \
+            (w["address"] for w in wallets)
 
         # ---- Step 4: Fund Address 1 via Faucet ----
         print("\n--- Step 4: Fund Address 1 via Faucet (1.0 BTC) ---")
         fund_via_faucet(page, base_url, addr1)
         print(f"  Funded: 1.0 BTC → Address 1")
 
-        # ---- Step 5: Sweep Address 1 → Address 2 ----
-        print("\n--- Step 5: Sweep Address 1 → Address 2 ---")
+        # ---- Step 5: Sweep Address 1 → Address 2 (with 0.99% tip) ----
+        print("\n--- Step 5: Sweep Address 1 → Address 2 (with 0.99% tip) ---")
         sweep_result = sweep_funds(
             page, base_url,
             wallets[0]["bill_wif"],
-            addr1,
-            addr2,
+            addr1, addr2,
+            tip=True, label="step5_sweep_tip",
         )
         print(f"  Amount: {sweep_result['amount_sat']:,} sats")
         print(f"  Fee:    {sweep_result['fee_sat']:,} sats")
@@ -479,14 +489,14 @@ def main():
             page, base_url,
             wallets[1]["backup_wif"],
             wallets[1]["internal_pubkey"],
-            addr2,
-            addr3,
+            addr2, addr3,
+            label="step6_recover",
         )
         print(f"  Amount: {recover_result['amount_sat']:,} sats")
         print(f"  Fee:    {recover_result['fee_sat']:,} sats")
 
-        # ---- Step 7: Verify fee chain ----
-        print("\n--- Step 7: Verify Fee Chain ---")
+        # ---- Step 7: Verify fee chain (with tip) ----
+        print("\n--- Step 7: Verify Fee Chain (with tip) ---")
         initial_sats = 100_000_000
         sweep_fee = sweep_result["fee_sat"]
         sweep_tip = sweep_result["tip_sat"]
@@ -494,7 +504,7 @@ def main():
         total_deductions = sweep_fee + sweep_tip + recover_fee
         expected_final = initial_sats - total_deductions
 
-        # Verify tip is ~0.99% of the funded amount
+        # Verify tip is 0.99% of the funded amount
         expected_tip = int(initial_sats * 0.99 / 100)
         assert sweep_tip == expected_tip, \
             (f"Tip mismatch: expected {expected_tip} (0.99% of {initial_sats}), "
@@ -519,6 +529,64 @@ def main():
               f" (fees: {sweep_fee + recover_fee:,}, tip: {sweep_tip:,})")
         print(f"  Fee chain: 100,000,000 - {sweep_fee:,} - {sweep_tip:,}"
               f" - {recover_fee:,} = {expected_final:,} ✓")
+
+        # ---- Step 8: Fund Address 4 for no-tip test ----
+        print("\n--- Step 8: Fund Address 4 via Faucet (1.0 BTC) ---")
+        fund_via_faucet(page, base_url, addr4)
+        print(f"  Funded: 1.0 BTC → Address 4")
+
+        # ---- Step 9: Sweep Address 4 → Address 5 (no tip) ----
+        print("\n--- Step 9: Sweep Address 4 → Address 5 (no tip) ---")
+        sweep_notip = sweep_funds(
+            page, base_url,
+            wallets[3]["bill_wif"],
+            addr4, addr5,
+            tip=False, label="step9_sweep_notip",
+        )
+        print(f"  Amount: {sweep_notip['amount_sat']:,} sats")
+        print(f"  Fee:    {sweep_notip['fee_sat']:,} sats")
+        print(f"  Tip:    {sweep_notip['tip_sat']:,} sats")
+
+        # ---- Step 10: Recover Address 5 → Address 6 ----
+        print("\n--- Step 10: Recover Address 5 → Address 6 ---")
+        recover_notip = recover_funds(
+            page, base_url,
+            wallets[4]["backup_wif"],
+            wallets[4]["internal_pubkey"],
+            addr5, addr6,
+            label="step10_recover_notip",
+        )
+        print(f"  Amount: {recover_notip['amount_sat']:,} sats")
+        print(f"  Fee:    {recover_notip['fee_sat']:,} sats")
+
+        # ---- Step 11: Verify fee chain (no tip) ----
+        print("\n--- Step 11: Verify Fee Chain (no tip) ---")
+        assert sweep_notip["tip_sat"] == 0, \
+            f"Expected no tip, got {sweep_notip['tip_sat']} sats"
+
+        sweep_fee2 = sweep_notip["fee_sat"]
+        recover_fee2 = recover_notip["fee_sat"]
+        total_fees2 = sweep_fee2 + recover_fee2
+        expected_final2 = initial_sats - total_fees2
+
+        assert recover_notip["amount_sat"] == expected_final2, \
+            (f"Fee chain mismatch (no tip): expected {expected_final2}, "
+             f"got {recover_notip['amount_sat']} "
+             f"(1.0 BTC - {sweep_fee2} - {recover_fee2})")
+
+        # Print summary table
+        print(f"\n  {'Step':<10} {'From':<12} {'To':<12} "
+              f"{'Amount':>15} {'Fee':>10} {'Tip':>10}")
+        print(f"  {'-'*10} {'-'*12} {'-'*12} {'-'*15} {'-'*10} {'-'*10}")
+        print(f"  {'Faucet':<10} {'coinbase':<12} {'Address 4':<12} "
+              f"{'100,000,000':>15} {'—':>10} {'—':>10}")
+        print(f"  {'Sweep':<10} {'Address 4':<12} {'Address 5':<12} "
+              f"{sweep_notip['amount_sat']:>15,} {sweep_fee2:>10,} {'0':>10}")
+        print(f"  {'Recover':<10} {'Address 5':<12} {'Address 6':<12} "
+              f"{recover_notip['amount_sat']:>15,} {recover_fee2:>10,} {'—':>10}")
+        print(f"\n  Total fees: {total_fees2:,} sats (no tip)")
+        print(f"  Fee chain: 100,000,000 - {sweep_fee2:,} - {recover_fee2:,}"
+              f" = {expected_final2:,} ✓")
 
         # Check for unexpected dialogs
         if dialogs:
