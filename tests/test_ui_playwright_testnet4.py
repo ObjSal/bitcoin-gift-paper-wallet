@@ -325,6 +325,8 @@ def sweep_testnet4(page, base_url, wif, expected_source, dest_addr,
 
     # --- Step 3: Sweep ---
     page.fill("#destAddress", dest_addr)
+    # Expand the collapsible fee rate section before filling
+    page.click("#feeRateToggle")
     page.fill("#feeRate", "2")
 
     page.click("#btnSweep")
