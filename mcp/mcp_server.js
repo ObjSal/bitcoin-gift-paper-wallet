@@ -88,7 +88,12 @@ function openFile(filePath) {
     execFile('open', [filePath]);
 }
 
-// ── Mempool.space API helpers ─────────────────────────────────────────────────
+// ── Network API helpers ──────────────────────────────────────────────────────
+//
+// Supports mainnet/testnet4 via mempool.space and regtest via local server.
+// Set REGTEST_SERVER_URL env var to point to the local server (e.g. http://127.0.0.1:8080).
+
+const REGTEST_SERVER_URL = process.env.REGTEST_SERVER_URL || '';
 
 function mempoolBaseUrl(network) {
     if (network === 'testnet4') return 'https://mempool.space/testnet4/api';
@@ -96,6 +101,19 @@ function mempoolBaseUrl(network) {
 }
 
 async function fetchUtxos(address, network) {
+    if (network === 'regtest') {
+        if (!REGTEST_SERVER_URL) throw new Error('REGTEST_SERVER_URL not set');
+        const url = `${REGTEST_SERVER_URL}/api/utxos`;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, network: 'regtest' }),
+            signal: AbortSignal.timeout(30000),
+        });
+        if (!resp.ok) throw new Error(`UTXO fetch failed (${resp.status}): ${await resp.text()}`);
+        const data = await resp.json();
+        return (data.utxos || []).map(u => ({ txid: u.txid, vout: u.vout, value_sat: u.value_sat || u.value }));
+    }
     const url = `${mempoolBaseUrl(network)}/address/${address}/utxo`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(30000) });
     if (!resp.ok) throw new Error(`UTXO fetch failed (${resp.status}): ${await resp.text()}`);
@@ -104,6 +122,19 @@ async function fetchUtxos(address, network) {
 }
 
 async function broadcastTx(rawHex, network) {
+    if (network === 'regtest') {
+        if (!REGTEST_SERVER_URL) throw new Error('REGTEST_SERVER_URL not set');
+        const url = `${REGTEST_SERVER_URL}/api/broadcast`;
+        const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ raw_hex: rawHex, network: 'regtest' }),
+            signal: AbortSignal.timeout(30000),
+        });
+        if (!resp.ok) throw new Error(`Broadcast failed (${resp.status}): ${await resp.text()}`);
+        const data = await resp.json();
+        return data.txid;
+    }
     const url = `${mempoolBaseUrl(network)}/tx`;
     const resp = await fetch(url, {
         method: 'POST',
@@ -116,6 +147,10 @@ async function broadcastTx(rawHex, network) {
 }
 
 async function fetchFeeRates(network) {
+    if (network === 'regtest') {
+        // Regtest doesn't have fee estimation; use a fixed low rate
+        return { fastestFee: 2, halfHourFee: 1, hourFee: 1 };
+    }
     const url = `${mempoolBaseUrl(network)}/v1/fees/recommended`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) throw new Error(`Fee fetch failed (${resp.status})`);
@@ -152,7 +187,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 properties: {
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         default: 'mainnet',
                         description: 'Bitcoin network. Use mainnet for real wallets.',
                     },
@@ -176,7 +211,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 properties: {
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         default: 'mainnet',
                         description: 'Bitcoin network. Use mainnet for real wallets.',
                     },
@@ -210,7 +245,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         default: 'mainnet',
                         description: 'Bitcoin network.',
                     },
@@ -229,7 +264,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                 properties: {
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         description: 'Only check wallets on this network. If omitted, checks all.',
                     },
                 },
@@ -259,7 +294,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         default: 'mainnet',
                         description: 'Bitcoin network.',
                     },
@@ -294,7 +329,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     network: {
                         type: 'string',
-                        enum: ['mainnet', 'testnet4'],
+                        enum: ['mainnet', 'testnet4', 'regtest'],
                         default: 'mainnet',
                         description: 'Bitcoin network.',
                     },
@@ -395,11 +430,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const openPreview = args.open_preview ?? true;
 
         const wallet   = BitcoinCrypto.generateTaprootAddress(network, backupKey);
+        // For backup wallets, the bill shows the tweaked WIF (key-path spending).
+        // For non-backup wallets, the bill shows the untweaked (internal) WIF.
+        let billWif;
+        if (backupKey) {
+            const tweakedKey = hexToBytes(wallet.tweaked_private_key_hex);
+            billWif = BitcoinCrypto.privateKeyToWif(tweakedKey, true, network);
+        } else {
+            billWif = wallet.private_key_wif;
+        }
+
         const walletData = {
             type:                   'Taproot P2TR',
             network,
             address:                wallet.address,
-            private_key_wif:        wallet.private_key_wif,
+            private_key_wif:        billWif,
             internal_pubkey_hex:    wallet.internal_pubkey_hex,
             output_pubkey_hex:      wallet.output_pubkey_hex,
             tweaked_private_key_hex: wallet.tweaked_private_key_hex,
@@ -410,7 +455,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 script_tree_hash:       wallet.script_tree_hash,
             }),
         };
-        const { billPath, jsonPath } = await saveBill(wallet.address, wallet.private_key_wif, 'taproot', backupKey, network, walletData);
+        const { billPath, jsonPath } = await saveBill(wallet.address, billWif, 'taproot', backupKey, network, walletData);
 
         if (openPreview) openFile(billPath);
 
@@ -615,7 +660,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     amount_btc: sendSat / 1e8,
                     fee_sats: feeSat,
                     fee_rate_sat_vb: feeRate,
-                    explorer_url: network === 'testnet4'
+                    explorer_url: network === 'regtest' ? `regtest:${txid}`
+                        : network === 'testnet4'
                         ? `https://mempool.space/testnet4/tx/${txid}`
                         : `https://mempool.space/tx/${txid}`,
                 }, null, 2),
@@ -645,7 +691,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { outputKeyX, parity } = BitcoinCrypto.taprootTweakPubkey(internalPubX, scriptTreeHash);
 
         // Derive the address
-        const hrp = network === 'testnet4' ? 'tb' : 'bc';
+        const hrp = network === 'regtest' ? 'bcrt' : network === 'testnet4' ? 'tb' : 'bc';
         const address = BitcoinCrypto.bech32Encode(hrp, 1, Array.from(outputKeyX), 'bech32m');
         const inputScriptpubkey = BitcoinCrypto._addressToScriptpubkey(address);
 
@@ -717,7 +763,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     amount_btc: sendSat / 1e8,
                     fee_sats: feeSat,
                     fee_rate_sat_vb: feeRate,
-                    explorer_url: network === 'testnet4'
+                    explorer_url: network === 'regtest' ? `regtest:${txid}`
+                        : network === 'testnet4'
                         ? `https://mempool.space/testnet4/tx/${txid}`
                         : `https://mempool.space/tx/${txid}`,
                 }, null, 2),
