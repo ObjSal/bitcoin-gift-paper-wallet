@@ -4,8 +4,6 @@ A self-contained Bitcoin paper wallet generator that creates gift-ready Bitcoin 
 
 **Zero external dependencies.** All cryptography — secp256k1, SHA-256, RIPEMD-160, bech32/bech32m, ECDSA, Schnorr — is hand-rolled in pure JavaScript and runs entirely in your browser. No npm, no CDN, no third-party libraries. Works offline.
 
-> **Live site:** Deploy to GitHub Pages or run locally — no server required for mainnet and testnet4.
-
 ## Demo
 
 <div align="center">
@@ -34,11 +32,7 @@ Each bill includes the public address (as text + QR code) on the front and the p
 
 ## Quick Start
 
-### Option 1: GitHub Pages (easiest)
-
-Push this repo to GitHub and enable GitHub Pages. Visit `https://ObjSal.github.io/bitcoin-gift-paper-wallet/`. Works immediately — mainnet and testnet4 supported.
-
-### Option 2: Claude Desktop / Claude Code (via MCP)
+### Option 1: Claude Desktop / Claude Code (via MCP)
 
 Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install. Then ask Claude:
 
@@ -48,7 +42,7 @@ Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://git
 
 See the [MCP Server](#mcp-server-claude-desktop--claude-code) section for manual setup and more examples.
 
-### Option 3: Run Locally (no dependencies)
+### Option 2: Run Locally (no dependencies)
 
 ```bash
 # Clone the repo
@@ -63,7 +57,7 @@ python3 -m http.server 8080
 
 That's it. All crypto, QR generation, and bill rendering happen client-side in JavaScript.
 
-### Option 4: Run with Python Server (for regtest testing)
+### Option 3: Run with Python Server (for regtest testing)
 
 ```bash
 # Install dependencies
@@ -83,7 +77,7 @@ Regtest mode starts a local `bitcoind`, creates a wallet, mines 101 blocks, and 
 ### Architecture
 
 ```
-GitHub Pages (static):     All JS crypto → mempool.space API
+Static site:               All JS crypto → mempool.space API
 Local Python server:       All JS crypto → regtest via server API (bitcoin-cli bridge)
 ```
 
