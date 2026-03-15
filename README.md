@@ -32,7 +32,11 @@ Each bill includes the public address (as text + QR code) on the front and the p
 
 ## Quick Start
 
-### Option 1: Claude Desktop / Claude Code (via MCP)
+### Option 1: Use the Website (easiest)
+
+Visit **[ObjSal.github.io/bitcoin-gift-paper-wallet](https://ObjSal.github.io/bitcoin-gift-paper-wallet/)** — no install needed. Works with mainnet and testnet4. All crypto runs in your browser.
+
+### Option 2: Claude Desktop / Claude Code (via MCP)
 
 Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://github.com/ObjSal/bitcoin-gift-wallet/releases) and double-click to install. Then ask Claude:
 
@@ -42,7 +46,7 @@ Download `bitcoin-gift-wallet.mcpb` from the [latest GitHub release](https://git
 
 See the [MCP Server](#mcp-server-claude-desktop--claude-code) section for manual setup and more examples.
 
-### Option 2: Run Locally (no dependencies)
+### Option 3: Run Locally (no dependencies)
 
 ```bash
 # Clone the repo
@@ -57,7 +61,7 @@ python3 -m http.server 8080
 
 That's it. All crypto, QR generation, and bill rendering happen client-side in JavaScript.
 
-### Option 3: Run with Python Server (for regtest testing)
+### Option 4: Run with Python Server (for regtest testing)
 
 ```bash
 # Install dependencies
