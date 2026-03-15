@@ -128,7 +128,7 @@ To disable regtest (use only mainnet/testnet4), set `REGTEST_SERVER_URL` to an e
 
 | Tool | Description |
 |------|-------------|
-| `generate_segwit_wallet` | Generate a SegWit (bc1q...) wallet + open bill in Preview |
+| `generate_segwit_wallet` | Generate a SegWit (bc1q...) wallet + display bill inline |
 | `generate_taproot_wallet` | Generate a Taproot (bc1p...) wallet, with optional backup key |
 | `check_balance` | Check the balance of an address via mempool.space (or regtest) |
 | `check_all_balances` | Check balances of all previously generated wallets |

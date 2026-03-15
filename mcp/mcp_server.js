@@ -47,7 +47,144 @@ const { StdioServerTransport } = require('@modelcontextprotocol/sdk/server/stdio
 const {
     CallToolRequestSchema,
     ListToolsRequestSchema,
+    ListResourcesRequestSchema,
+    ReadResourceRequestSchema,
 } = require('@modelcontextprotocol/sdk/types.js');
+
+// ── MCP App (inline bill viewer) ─────────────────────────────────────────────
+
+const BILL_VIEWER_URI = 'ui://bitcoin-gift-wallet/bill-viewer.html';
+const APP_MIME = 'text/html;profile=mcp-app';
+
+const BILL_VIEWER_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Bitcoin Gift Wallet Bill</title>
+  <style>
+    body { margin: 0; padding: 8px; font-family: system-ui, sans-serif; background: transparent; text-align: center; }
+    img { max-width: 100%; height: auto; border-radius: 4px; cursor: pointer; }
+    img:hover { opacity: 0.9; }
+    .address { font-family: monospace; font-size: 12px; color: #666; margin-top: 8px; word-break: break-all; }
+    @media (prefers-color-scheme: dark) { .address { color: #aaa; } }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-top: 4px; }
+    .segwit { background: #e3f2fd; color: #1565c0; }
+    .taproot { background: #f3e5f5; color: #7b1fa2; }
+    @media (prefers-color-scheme: dark) {
+      .segwit { background: #1a3a5c; color: #90caf9; }
+      .taproot { background: #3a1a4c; color: #ce93d8; }
+    }
+  </style>
+</head>
+<body>
+  <div id="c"><p>Loading bill...</p></div>
+  <script>
+    // ── Inline MCP Apps protocol (no CDN dependency) ──
+    // Implements the postMessage handshake from @modelcontextprotocol/ext-apps
+    var _rpcId = 1;
+    var _pending = {};
+
+    function _send(msg) { window.parent.postMessage(msg, "*"); }
+
+    function _request(method, params) {
+      var id = _rpcId++;
+      return new Promise(function(resolve) {
+        _pending[id] = resolve;
+        _send({ jsonrpc: "2.0", method: method, id: id, params: params || {} });
+      });
+    }
+
+    function _notify(method, params) {
+      _send({ jsonrpc: "2.0", method: method, params: params || {} });
+    }
+
+    function _reportSize() {
+      var el = document.documentElement;
+      _notify("ui/notifications/size-changed", {
+        width: el.scrollWidth,
+        height: el.scrollHeight
+      });
+    }
+
+    function renderBill(d) {
+      var c = document.getElementById("c");
+      if (!d || !d.billImageBase64) { c.innerHTML = "<p>No bill data received</p>"; return; }
+      var img = document.createElement("img");
+      img.src = "data:image/png;base64," + d.billImageBase64;
+      img.alt = "Bitcoin Gift Wallet Bill";
+      img.title = "Click to open full-size bill in Preview";
+      if (d.billFilename) {
+        img.addEventListener("click", function() {
+          _request("tools/call", { name: "open_wallet_bill", arguments: { filename: d.billFilename } });
+        });
+      }
+      img.onload = _reportSize;
+      var addr = document.createElement("div");
+      addr.className = "address";
+      addr.textContent = d.address || "";
+      var badge = document.createElement("span");
+      var atype = (d.addressType || "").split(" ")[0].toLowerCase();
+      badge.className = "badge " + atype;
+      badge.textContent = (d.addressType || "") + " \\u00B7 " + (d.network || "").toUpperCase();
+      c.innerHTML = "";
+      c.appendChild(img);
+      c.appendChild(addr);
+      c.appendChild(badge);
+    }
+
+    // Listen for messages from host (via sandbox proxy)
+    window.addEventListener("message", function(e) {
+      var msg = e.data;
+      if (!msg || msg.jsonrpc !== "2.0") return;
+
+      // JSON-RPC response to our request
+      if (msg.id != null && !msg.method) {
+        if (_pending[msg.id]) {
+          _pending[msg.id](msg.result || null);
+          delete _pending[msg.id];
+        }
+        return;
+      }
+
+      // Tool result notification from host
+      if (msg.method === "ui/notifications/tool-result") {
+        var p = msg.params || {};
+        if (p.structuredContent && p.structuredContent.billImageBase64) {
+          renderBill(p.structuredContent);
+          return;
+        }
+        // Fallback: extract from content array
+        var imgData = null, meta = {};
+        var items = p.content || [];
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].type === "image") imgData = items[i].data;
+          if (items[i].type === "text") { try { meta = JSON.parse(items[i].text); } catch(ex) {} }
+        }
+        if (imgData) renderBill({ billImageBase64: imgData, address: meta.address, addressType: meta.type, network: meta.network });
+        return;
+      }
+    });
+
+    // Step 1: Send ui/initialize (with protocol version) to host via sandbox proxy
+    _request("ui/initialize", {
+      protocolVersion: "2026-01-26",
+      appInfo: { name: "Bill Viewer", version: "1.0.0" },
+      appCapabilities: {}
+    }).then(function(result) {
+      // Step 2: Signal that we are initialized and ready
+      _notify("ui/notifications/initialized");
+      // Step 3: Report initial size so the host sets iframe height
+      _reportSize();
+      // Step 4: Set up ResizeObserver for dynamic size updates
+      if (typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(_reportSize).observe(document.documentElement);
+      }
+    });
+  </script>
+</body>
+</html>`;
 
 // ── Bill rendering ────────────────────────────────────────────────────────────
 
@@ -86,6 +223,16 @@ async function saveBill(address, wif, addressType, isTweaked, network, walletDat
 
 function openFile(filePath) {
     execFile('open', [filePath]);
+}
+
+async function shrinkBillForPreview(billPath) {
+    const img = await loadImage(billPath);
+    const w = 600;
+    const h = Math.round(img.height * (w / img.width));
+    const canvas = createCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toBuffer('image/png').toString('base64');
 }
 
 // ── Tip/donation addresses ───────────────────────────────────────────────────
@@ -177,7 +324,7 @@ function hexToBytes(hex) {
 
 const server = new Server(
     { name: 'bitcoin-gift-wallet', version: '1.0.0' },
-    { capabilities: { tools: {} } }
+    { capabilities: { tools: {}, resources: {} } }
 );
 
 // ── Tool list ─────────────────────────────────────────────────────────────────
@@ -188,8 +335,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             name: 'generate_segwit_wallet',
             description:
                 'Generate a Bitcoin SegWit (P2WPKH, bc1q...) paper wallet. ' +
-                'Renders a gift-ready bill image and opens it in Preview. ' +
+                'Renders a gift-ready bill image. ' +
                 'All keys are generated locally — nothing leaves this machine.',
+            _meta: { ui: { resourceUri: BILL_VIEWER_URI }, 'ui/resourceUri': BILL_VIEWER_URI },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -201,8 +349,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     open_preview: {
                         type: 'boolean',
-                        default: true,
-                        description: 'Automatically open the bill PNG in Preview.',
+                        default: false,
+                        description: 'Not needed. Bill image is returned inline. Only set true to also open macOS Preview app.',
                     },
                 },
             },
@@ -212,8 +360,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             description:
                 'Generate a Bitcoin Taproot (P2TR, bc1p...) paper wallet. ' +
                 'Optionally includes a backup key for script-path recovery. ' +
-                'Renders a gift-ready bill image and opens it in Preview. ' +
+                'Renders a gift-ready bill image. ' +
                 'All keys are generated locally — nothing leaves this machine.',
+            _meta: { ui: { resourceUri: BILL_VIEWER_URI }, 'ui/resourceUri': BILL_VIEWER_URI },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -233,8 +382,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
                     },
                     open_preview: {
                         type: 'boolean',
-                        default: true,
-                        description: 'Automatically open the bill PNG in Preview.',
+                        default: false,
+                        description: 'Not needed. Bill image is returned inline. Only set true to also open macOS Preview app.',
                     },
                 },
             },
@@ -401,7 +550,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         {
             name: 'open_wallet_bill',
-            description: 'Open a previously generated wallet bill image in Preview.',
+            description: 'Show a previously generated wallet bill image.',
+            _meta: { ui: { resourceUri: BILL_VIEWER_URI }, 'ui/resourceUri': BILL_VIEWER_URI },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -426,7 +576,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // ── generate_segwit_wallet ─────────────────────────────────────────────
     if (name === 'generate_segwit_wallet') {
         const network     = args.network      ?? 'mainnet';
-        const openPreview = args.open_preview ?? true;
+        const openPreview = args.open_preview ?? false;
 
         const wallet   = BitcoinCrypto.generateSegwitAddress(network);
         const walletData = {
@@ -440,16 +590,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         if (openPreview) openFile(billPath);
 
+        const content = [{
+            type: 'text',
+            text: JSON.stringify({
+                ...walletData,
+                bill_image: billPath,
+                metadata_json: jsonPath,
+                note: 'Bill opened in Preview. Fund the address, fold, and gift. Keep the WIF secret until the recipient is ready to sweep.',
+            }, null, 2),
+        }];
         return {
-            content: [{
-                type: 'text',
-                text: JSON.stringify({
-                    ...walletData,
-                    bill_image: billPath,
-                    metadata_json: jsonPath,
-                    note: 'Bill opened in Preview. Fund the address, fold, and gift. Keep the WIF secret until the recipient is ready to sweep.',
-                }, null, 2),
-            }],
+            content,
+            structuredContent: {
+                billImageBase64: await shrinkBillForPreview(billPath),
+                billFilename: path.basename(billPath),
+                address: wallet.address,
+                addressType: walletData.type,
+                network,
+            },
         };
     }
 
@@ -457,7 +615,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === 'generate_taproot_wallet') {
         const network     = args.network      ?? 'mainnet';
         const backupKey   = args.backup_key   ?? false;
-        const openPreview = args.open_preview ?? true;
+        const openPreview = args.open_preview ?? false;
 
         const wallet   = BitcoinCrypto.generateTaprootAddress(network, backupKey);
         // For backup wallets, the bill shows the tweaked WIF (key-path spending).
@@ -498,7 +656,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 : 'Bill opened in Preview. Fund the address, fold, and gift.',
         };
 
-        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        const content = [{ type: 'text', text: JSON.stringify(result, null, 2) }];
+        return {
+            content,
+            structuredContent: {
+                billImageBase64: await shrinkBillForPreview(billPath),
+                billFilename: path.basename(billPath),
+                address: wallet.address,
+                addressType: walletData.type,
+                network,
+            },
+        };
     }
 
     // ── check_balance ──────────────────────────────────────────────────────
@@ -893,11 +1061,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 }],
             };
         }
+        if (filePath.endsWith('.png')) {
+            openFile(filePath);
+            const jsonPath = filePath.replace(/\.png$/, '.json');
+            let meta = {};
+            try { meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (_) {}
+            return {
+                content: [
+                    { type: 'text', text: JSON.stringify({ status: 'opened', path: filePath }, null, 2) },
+                ],
+                structuredContent: {
+                    billImageBase64: await shrinkBillForPreview(filePath),
+                    billFilename: path.basename(filePath),
+                    address: meta.address || '',
+                    addressType: meta.type || '',
+                    network: meta.network || '',
+                },
+            };
+        }
         openFile(filePath);
         return { content: [{ type: 'text', text: JSON.stringify({ status: 'opened', path: filePath }, null, 2) }] };
     }
 
     return { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown tool: ${name}` }) }] };
+});
+
+// ── MCP App resources ────────────────────────────────────────────────────────
+
+server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    return {
+        resources: [{
+            uri: BILL_VIEWER_URI,
+            name: 'Bill Viewer',
+            mimeType: APP_MIME,
+        }],
+    };
+});
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (request.params.uri === BILL_VIEWER_URI) {
+        return {
+            contents: [{
+                uri: BILL_VIEWER_URI,
+                mimeType: APP_MIME,
+                text: BILL_VIEWER_HTML,
+            }],
+        };
+    }
+    throw new Error(`Unknown resource: ${request.params.uri}`);
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────

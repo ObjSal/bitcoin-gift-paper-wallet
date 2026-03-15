@@ -168,7 +168,7 @@ A full security assessment is available in [`docs/security_assessment.md`](docs/
 
 ## MCP Server (Claude Desktop / Claude Code)
 
-Generate paper wallets directly from Claude using [MCP](https://modelcontextprotocol.io/) — no browser needed. Two implementations are provided (Node.js and Python), both reusing the project's existing crypto modules.
+Generate paper wallets directly from Claude using [MCP](https://modelcontextprotocol.io/) — no browser needed. Bill images render **inline in Claude Desktop conversations** via MCP Apps. Two implementations are provided (Node.js and Python), both reusing the project's existing crypto modules.
 
 ### Option 1: Download the .mcpb bundle (easiest)
 
