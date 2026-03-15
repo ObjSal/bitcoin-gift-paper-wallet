@@ -6,6 +6,16 @@ A self-contained Bitcoin paper wallet generator that creates gift-ready Bitcoin 
 
 > **Live site:** Deploy to GitHub Pages or run locally — no server required for mainnet and testnet4.
 
+## Demo
+
+<div align="center">
+
+<video src="docs/demo_wallet_creation.mp4" autoplay loop muted playsinline></video>
+
+*Creating Bitcoin paper wallets across all networks in Claude Desktop via MCP*
+
+</div>
+
 ## What It Does
 
 1. **Generate** a Bitcoin paper wallet (SegWit or Taproot) with a printable bill image
