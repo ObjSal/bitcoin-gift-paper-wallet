@@ -5,6 +5,7 @@ Exposes wallet generation tools to Claude Desktop.
 Runs locally; private keys never leave this machine.
 """
 
+import base64
 import json
 import os
 import subprocess
@@ -63,6 +64,13 @@ def _save_metadata(bill_path: str, wallet_data: dict) -> str:
 def _open_file(path: str):
     """Open a file with the default macOS app (Preview for PNGs)."""
     subprocess.Popen(["open", path])
+
+
+def _image_content(path: str):
+    """Return an ImageContent block with base64-encoded PNG data."""
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+    return types.ImageContent(type="image", data=data, mimeType="image/png")
 
 
 # ── Tip/donation addresses ───────────────────────────────────────────────────
@@ -165,8 +173,8 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "open_preview": {
                         "type": "boolean",
-                        "default": True,
-                        "description": "Automatically open the bill PNG in Preview.",
+                        "default": False,
+                        "description": "Not needed. Bill image is returned inline. Only set true to also open macOS Preview app.",
                     },
                 },
                 "required": [],
@@ -200,8 +208,8 @@ async def list_tools() -> list[types.Tool]:
                     },
                     "open_preview": {
                         "type": "boolean",
-                        "default": True,
-                        "description": "Automatically open the bill PNG in Preview.",
+                        "default": False,
+                        "description": "Not needed. Bill image is returned inline. Only set true to also open macOS Preview app.",
                     },
                 },
                 "required": [],
@@ -402,7 +410,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
     # ── generate_segwit_wallet ────────────────────────────────────────────────
     if name == "generate_segwit_wallet":
         network = arguments.get("network", "mainnet")
-        open_preview = arguments.get("open_preview", True)
+        open_preview = arguments.get("open_preview", False)
 
         wallet = bc.generate_segwit_address(network=network)
         bill_path = _save_bill(wallet, address_type="segwit")
@@ -427,13 +435,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 "Keep the WIF secret until the recipient is ready to sweep."
             ),
         }
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2)), _image_content(bill_path)]
 
     # ── generate_taproot_wallet ───────────────────────────────────────────────
     elif name == "generate_taproot_wallet":
         network = arguments.get("network", "mainnet")
         backup_key = arguments.get("backup_key", False)
-        open_preview = arguments.get("open_preview", True)
+        open_preview = arguments.get("open_preview", False)
 
         wallet = bc.generate_taproot_address(network=network, backup_key=backup_key)
         is_tweaked = backup_key
@@ -486,7 +494,7 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 "Bill opened in Preview. Fund the address, then fold and gift."
             )
 
-        return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+        return [types.TextContent(type="text", text=json.dumps(result, indent=2)), _image_content(bill_path)]
 
     # ── check_balance ─────────────────────────────────────────────────────────
     elif name == "check_balance":
@@ -827,10 +835,13 @@ async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
                 text=json.dumps({"error": f"File not found: {filename}. Use list_generated_wallets to see available files."})
             )]
         _open_file(path)
-        return [types.TextContent(
+        content = [types.TextContent(
             type="text",
             text=json.dumps({"status": "opened", "path": path}, indent=2)
         )]
+        if path.endswith(".png"):
+            content.append(_image_content(path))
+        return content
 
     else:
         return [types.TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
