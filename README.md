@@ -10,7 +10,7 @@ A self-contained Bitcoin paper wallet generator that creates gift-ready Bitcoin 
 
 <div align="center">
 
-<video src="docs/demo_wallet_creation.mp4" autoplay loop muted playsinline></video>
+https://github.com/user-attachments/assets/b580e8f3-7807-47d5-8d5d-7137397fb7af
 
 *Creating Bitcoin paper wallets across all networks in Claude Desktop via MCP*
 
