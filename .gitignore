@@ -36,3 +36,7 @@ generated-bills/
 # OS
 .DS_Store
 Thumbs.db
+
+# Private companion — internal dev docs live in bitcoin-gift-paper-wallet-private (symlinked via its install.sh)
+CLAUDE.md
+.claude/
